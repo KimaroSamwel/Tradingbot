@@ -37,3 +37,6 @@ temp/
 # Trading Data (local only)
 trade_journal.json
 trades.csv
+
+# Database (local only)
+*.db
