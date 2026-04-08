@@ -1,180 +1,35 @@
 {
   "position_sizing": {
-    "default_method": "risk_based",
-    "methods": {
-      "fixed": {
-        "lot_size": 0.01,
-        "description": "Fixed lot size for all trades"
-      },
-      "risk_based": {
-        "risk_per_trade_pct": 1.0,
-        "max_risk_pct": 2.0,
-        "min_risk_pct": 0.5,
-        "description": "Size based on % risk of account"
-      },
-      "kelly": {
-        "kelly_fraction": 0.125,
-        "min_trades_for_kelly": 30,
-        "fallback_method": "risk_based",
-        "description": "Kelly Criterion position sizing - FIXED to 1/8 Kelly (12.5%)"
-      },
-      "optimal_f": {
-        "f_fraction": 0.3,
-        "min_trades": 50,
-        "description": "Optimal F position sizing"
-      }
-    },
-    "adjustments": {
-      "volatility_adjustment": true,
-      "correlation_adjustment": true,
-      "regime_adjustment": true,
-      "performance_adjustment": true
-    }
+    "method": "risk_based",
+    "risk_per_trade_pct": 1.0,
+    "max_positions": 3
   },
   "stop_loss": {
     "method": "atr",
-    "atr_multiplier": 1.5,
-    "min_sl_pips": 10,
-    "max_sl_pips": 100,
-    "use_support_resistance": true,
-    "buffer_pips": 2
+    "atr_multiplier": 1.5
   },
   "take_profit": {
     "method": "atr",
     "atr_multiplier": 2.5,
-    "min_tp_pips": 15,
-    "max_tp_pips": 200,
-    "use_support_resistance": true,
-    "risk_reward_ratio": 1.67
-  },
-  "trailing_stop": {
-    "enabled": true,
-    "activation_rr": 1.0,
-    "trail_atr_multiplier": 0.5,
-    "min_trail_pips": 5,
-    "update_frequency_seconds": 30
-  },
-  "partial_profit": {
-    "enabled": true,
-    "levels": [
-      {
-        "rr_ratio": 1.0,
-        "close_pct": 50,
-        "description": "Close 50% at 1:1 RR"
-      },
-      {
-        "rr_ratio": 2.0,
-        "close_pct": 25,
-        "description": "Close 25% at 2:1 RR"
-      }
-    ]
+    "min_rr_ratio": 2.0
   },
   "portfolio_limits": {
     "max_positions": 3,
-    "max_positions_per_pair": 1,
-    "max_correlated_positions": 2,
-    "max_portfolio_risk_pct": 5.0,
-    "correlation_threshold": 0.7
+    "max_correlation": 0.7
   },
   "loss_limits": {
     "daily": {
       "enabled": true,
       "loss_pct": 2.0,
-      "action": "stop_trading",
-      "reset_time": "00:00"
+      "action": "stop_trading"
     },
-    "weekly": {
-      "enabled": true,
-      "loss_pct": 10.0,
-      "action": "stop_trading",
-      "reset_day": "monday"
-    },
-    "monthly": {
-      "enabled": true,
-      "loss_pct": 20.0,
-      "action": "alert_and_reduce_risk"
+    "consecutive_losses": {
+      "max": 3,
+      "pause_hours": 4
     }
   },
   "drawdown_limits": {
     "max_drawdown_pct": 20.0,
-    "action": "shutdown",
-    "warning_drawdown_pct": 15.0,
-    "recovery_threshold_pct": 10.0,
-    "reduce_risk_on_drawdown": true,
-    "risk_reduction_pct": 50
-  },
-  "consecutive_losses": {
-    "max_consecutive": 5,
-    "action": "pause_trading",
-    "pause_duration_hours": 24,
-    "reduce_risk_after": 3,
-    "risk_reduction_pct": 25
-  },
-  "filters": {
-    "spread_filter": {
-      "enabled": true,
-      "method": "dynamic",
-      "max_spread_multiplier": 1.5
-    },
-    "volatility_filter": {
-      "enabled": true,
-      "min_atr_ratio": 0.5,
-      "max_atr_ratio": 2.0
-    },
-    "correlation_filter": {
-      "enabled": true,
-      "max_correlation": 0.7,
-      "lookback_periods": 100
-    },
-    "time_filter": {
-      "enabled": true,
-      "allowed_sessions": ["london_ny_overlap"],
-      "avoid_weekends": true,
-      "avoid_holidays": true
-    }
-  },
-  "risk_adjustments": {
-    "volatility": {
-      "high_volatility_threshold": 1.5,
-      "low_volatility_threshold": 0.7,
-      "high_vol_risk_multiplier": 0.7,
-      "low_vol_risk_multiplier": 1.0
-    },
-    "performance": {
-      "lookback_trades": 20,
-      "poor_performance_threshold": 0.3,
-      "good_performance_threshold": 0.6,
-      "poor_perf_risk_multiplier": 0.5,
-      "good_perf_risk_multiplier": 1.2
-    },
-    "regime": {
-      "trending_risk_multiplier": 1.0,
-      "ranging_risk_multiplier": 0.7,
-      "high_vol_risk_multiplier": 0.6
-    }
-  },
-  "emergency_shutdown": {
-    "enabled": true,
-    "triggers": [
-      {
-        "condition": "drawdown_exceeded",
-        "threshold": 20.0,
-        "action": "close_all_and_shutdown"
-      },
-      {
-        "condition": "consecutive_losses",
-        "threshold": 5,
-        "action": "pause_trading"
-      },
-      {
-        "condition": "daily_loss_exceeded",
-        "threshold": 5.0,
-        "action": "stop_new_trades"
-      },
-      {
-        "condition": "system_error",
-        "action": "shutdown"
-      }
-    ]
+    "action": "shutdown"
   }
 }
