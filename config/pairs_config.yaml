@@ -1,0 +1,221 @@
+# Currency Pair Specifications
+# Pair-specific settings for accurate trading
+
+EURUSD:
+  pip_value: 0.0001
+  pip_multiplier: 10000
+  spread_avg: 1.2
+  spread_max: 2.0
+  volatility: "medium"
+  session_priority: ["london", "new_york"]
+  best_sessions: ["london_ny_overlap"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "high"
+  correlation_pairs:
+    - pair: "GBPUSD"
+      correlation: 0.82
+    - pair: "USDCHF"
+      correlation: -0.85
+    - pair: "EURGBP"
+      correlation: 0.71
+  typical_spread_hours:
+    asian: 1.8
+    london: 0.8
+    new_york: 1.0
+    overlap: 0.6
+
+GBPUSD:
+  pip_value: 0.0001
+  pip_multiplier: 10000
+  spread_avg: 1.8
+  spread_max: 2.5
+  volatility: "high"
+  session_priority: ["london", "new_york"]
+  best_sessions: ["london", "london_ny_overlap"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "very_high"
+  correlation_pairs:
+    - pair: "EURUSD"
+      correlation: 0.82
+    - pair: "USDCHF"
+      correlation: -0.78
+    - pair: "EURGBP"
+      correlation: -0.65
+  typical_spread_hours:
+    asian: 2.5
+    london: 1.2
+    new_york: 1.5
+    overlap: 1.0
+
+USDJPY:
+  pip_value: 0.01
+  pip_multiplier: 100
+  spread_avg: 1.5
+  spread_max: 2.0
+  volatility: "medium"
+  session_priority: ["tokyo", "london"]
+  best_sessions: ["tokyo", "london"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "high"
+  correlation_pairs:
+    - pair: "EURJPY"
+      correlation: 0.75
+    - pair: "GBPJPY"
+      correlation: 0.72
+  typical_spread_hours:
+    asian: 1.0
+    london: 1.5
+    new_york: 1.8
+    overlap: 1.2
+
+AUDUSD:
+  pip_value: 0.0001
+  pip_multiplier: 10000
+  spread_avg: 1.5
+  spread_max: 2.0
+  volatility: "medium"
+  session_priority: ["sydney", "tokyo", "london"]
+  best_sessions: ["sydney", "london_ny_overlap"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "high"
+  correlation_pairs:
+    - pair: "NZDUSD"
+      correlation: 0.87
+    - pair: "EURUSD"
+      correlation: 0.68
+  typical_spread_hours:
+    asian: 1.2
+    london: 1.5
+    new_york: 1.8
+    overlap: 1.3
+
+USDCAD:
+  pip_value: 0.0001
+  pip_multiplier: 10000
+  spread_avg: 2.0
+  spread_max: 2.5
+  volatility: "medium"
+  session_priority: ["new_york"]
+  best_sessions: ["new_york", "london_ny_overlap"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "high"
+  correlation_pairs:
+    - pair: "AUDUSD"
+      correlation: 0.65
+  typical_spread_hours:
+    asian: 3.0
+    london: 2.0
+    new_york: 1.5
+    overlap: 1.8
+
+NZDUSD:
+  pip_value: 0.0001
+  pip_multiplier: 10000
+  spread_avg: 2.5
+  spread_max: 3.0
+  volatility: "medium-high"
+  session_priority: ["sydney", "tokyo"]
+  best_sessions: ["sydney", "tokyo"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "medium"
+  correlation_pairs:
+    - pair: "AUDUSD"
+      correlation: 0.87
+  typical_spread_hours:
+    asian: 2.0
+    london: 2.5
+    new_york: 3.0
+    overlap: 2.2
+
+EURGBP:
+  pip_value: 0.0001
+  pip_multiplier: 10000
+  spread_avg: 1.5
+  spread_max: 2.0
+  volatility: "low-medium"
+  session_priority: ["london"]
+  best_sessions: ["london"]
+  min_lot_size: 0.01
+  max_lot_size: 100.0
+  lot_step: 0.01
+  contract_size: 100000
+  margin_requirement: 0.02
+  news_sensitivity: "high"
+  correlation_pairs:
+    - pair: "EURUSD"
+      correlation: 0.71
+    - pair: "GBPUSD"
+      correlation: -0.65
+  typical_spread_hours:
+    asian: 2.5
+    london: 1.0
+    new_york: 1.8
+    overlap: 1.2
+
+# Global pair characteristics
+pair_categories:
+  majors:
+    - EURUSD
+    - GBPUSD
+    - USDJPY
+    - USDCHF
+  commodity_pairs:
+    - AUDUSD
+    - NZDUSD
+    - USDCAD
+  crosses:
+    - EURGBP
+    - EURJPY
+    - GBPJPY
+
+# Session times (GMT+3 for Nairobi)
+# FIX: Changed from GMT to GMT+3 to match broker timezone
+sessions:
+  sydney:
+    open: "00:00"
+    close: "09:00"
+    characteristics: "Low volume, range-bound"
+  tokyo:
+    open: "02:00"
+    close: "11:00"
+    characteristics: "JPY pairs active, moderate volume"
+  london:
+    open: "08:00"
+    close: "17:00"
+    characteristics: "Highest volume, best trends"
+  new_york:
+    open: "13:00"
+    close: "21:00"
+    characteristics: "High volume, volatile moves"
+  london_ny_overlap:
+    open: "13:00"
+    close: "17:00"
+    characteristics: "Highest liquidity, best for trading"
+  silver_bullet:
+    open: "18:00"
+    close: "19:00"
+    characteristics: "ICT Silver Bullet session - highest probability"
