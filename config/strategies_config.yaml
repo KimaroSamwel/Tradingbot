@@ -1,0 +1,134 @@
+# APEX FX Trading Bot - Strategies Configuration
+
+strategies:
+  # TREND FOLLOWING STRATEGIES
+  trend:
+    - id: EMA_CROSSUP
+      name: EMA Crossover Up
+      enabled: true
+      parameters:
+        fast_ema: 9
+        slow_ema: 21
+        confirm_ema: 50
+      min_confidence: 60
+      
+    - id: EMA_CROSSDOWN
+      name: EMA Crossover Down
+      enabled: true
+      parameters:
+        fast_ema: 9
+        slow_ema: 21
+        confirm_ema: 50
+      min_confidence: 60
+      
+    - id: SUPERTREND_BUY
+      name: Supertrend Buy
+      enabled: true
+      parameters:
+        period: 10
+        multiplier: 3
+      min_confidence: 65
+      
+    - id: ICHIMOKU_BUY
+      name: Ichimoku Cloud Buy
+      enabled: true
+      parameters: {}
+      min_confidence: 60
+  
+  # MEAN REVERSION STRATEGIES
+  mean_reversion:
+    - id: RSI_OVERSOLD
+      name: RSI Oversold Buy
+      enabled: true
+      parameters:
+        period: 14
+        oversold_level: 30
+      min_confidence: 55
+      
+    - id: RSI_OVERBOUGHT
+      name: RSI Overbought Sell
+      enabled: true
+      parameters:
+        period: 14
+        overbought_level: 70
+      min_confidence: 55
+      
+    - id: BB_BOUNCE_BUY
+      name: Bollinger Bounce Buy
+      enabled: true
+      parameters:
+        period: 20
+        std_dev: 2
+        oversold_pct: 0.1
+      min_confidence: 60
+      
+    - id: STOCH_OVERSOLD
+      name: Stochastic Oversold
+      enabled: true
+      parameters:
+        period: 14
+        oversold_level: 20
+      min_confidence: 50
+  
+  # BREAKOUT STRATEGIES
+  breakout:
+    - id: DC_BREAKOUT_UP
+      name: Donchian Breakout Up
+      enabled: true
+      parameters:
+        period: 20
+      min_confidence: 70
+      
+    - id: DC_BREAKOUT_DOWN
+      name: Donchian Breakout Down
+      enabled: true
+      parameters:
+        period: 20
+      min_confidence: 70
+      
+    - id: HH_BREAKOUT
+      name: Higher Highs Breakout
+      enabled: true
+      parameters: {}
+      min_confidence: 65
+  
+  # GRID STRATEGIES
+  grid:
+    - id: GRID_RANGE
+      name: Grid Range
+      enabled: true
+      parameters:
+        grid_size: 0.5  # % from middle
+        grid_count: 5
+      min_confidence: 50
+  
+  # SCALPING STRATEGIES
+  scalping:
+    - id: AO_SCALE_BUY
+      name: AO Scalp Buy
+      enabled: true
+      parameters: {}
+      min_confidence: 45
+      
+    - id: VOLUME_SPIKE
+      name: Volume Spike
+      enabled: true
+      parameters:
+        volume_threshold: 2.0
+      min_confidence: 40
+  
+  # CUSTOM/CONFLUENCE STRATEGIES
+  custom:
+    - id: CONFLUENCE_BUY
+      name: Multi-Factor Confluence Buy
+      enabled: true
+      parameters:
+        min_indicators: 3
+      min_confidence: 75
+        
+# Default strategy settings
+defaults:
+  min_risk_reward: 2.0
+  default_risk_pct: 1.0
+  max_positions_per_strategy: 1
+  cooldown_minutes: 30

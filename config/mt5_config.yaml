@@ -1,0 +1,48 @@
+# APEX FX Trading Bot - MT5 Configuration
+
+mt5:
+  enabled: true
+  connection:
+    path: ""  # Leave empty for default MT5 path
+    timeout: 30000
+    retry_attempts: 3
+    retry_delay: 5
+  
+  account:
+    demo: true
+    server: "Deriv-Demo"
+    login: 6023219
+    password: ""
+  
+  settings:
+    # Order filling mode: FOK, IOC, RETURN
+    filling_mode: "FOK"
+    magic_number: 2026001
+    comment_prefix: "Apex"
+    
+  symbols:
+    enabled:
+      - XAUUSD
+      - EURUSD
+      - GBPUSD
+      - USDJPY
+      - AUDUSD
+      - USDCAD
+    
+    excluded: []
+    
+    # Symbol-specific settings
+    xauusd:
+      max_spread: 300  # pips
+      min_volume: 0.01
+      max_volume: 100
+      
+    eurusd:
+      max_spread: 30
+      min_volume: 0.01
+      max_volume: 100
+      
+    default:
+      max_spread: 50
+      min_volume: 0.01
+      max_volume: 100

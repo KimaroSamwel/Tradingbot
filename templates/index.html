@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APEX FX Trading Bot</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0e17; color: #e0e0e0; }
+        
+        .header { background: linear-gradient(135deg, #1a1f35 0%, #0d1421 100%); padding: 15px 30px; border-bottom: 2px solid #2d3a52; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 24px; font-weight: bold; color: #00d4ff; }
+        .status-indicator { display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff4444; }
+        .status-dot.connected { background: #00ff88; }
+        
+        .container { display: grid; grid-template-columns: 280px 1fr 300px; gap: 20px; padding: 20px; height: calc(100vh - 70px); }
+        
+        .sidebar { background: #131a27; border-radius: 10px; padding: 20px; }
+        .sidebar h3 { color: #00d4ff; margin-bottom: 15px; font-size: 14px; text-transform: uppercase; }
+        
+        .watchlist-item { padding: 10px; margin-bottom: 8px; background: #1a2332; border-radius: 5px; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; }
+        .watchlist-item:hover { background: #243044; }
+        .watchlist-item.active { border-left: 3px solid #00d4ff; }
+        .symbol-price { font-weight: bold; color: #fff; }
+        .symbol-change { font-size: 12px; }
+        .positive { color: #00ff88; }
+        .negative { color: #ff4444; }
+        
+        .add-symbol { display: flex; gap: 5px; margin-top: 15px; }
+        .add-symbol input { flex: 1; padding: 8px; background: #1a2332; border: 1px solid #2d3a52; color: #fff; border-radius: 5px; }
+        .add-symbol button { padding: 8px 15px; background: #00d4ff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        
+        .main-content { display: flex; flex-direction: column; gap: 20px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+        .stat-card { background: #131a27; padding: 15px; border-radius: 10px; }
+        .stat-label { font-size: 12px; color: #888; text-transform: uppercase; }
+        .stat-value { font-size: 24px; font-weight: bold; margin-top: 5px; }
+        .stat-value.positive { color: #00ff88; }
+        .stat-value.negative { color: #ff4444; }
+        
+        .section { background: #131a27; border-radius: 10px; padding: 20px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .section-title { color: #00d4ff; font-size: 16px; }
+        
+        .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn-primary { background: #00d4ff; color: #000; font-weight: bold; }
+        .btn-primary:hover { background: #00b8e6; }
+        .btn-danger { background: #ff4444; color: #fff; }
+        .btn-success { background: #00ff88; color: #000; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .signals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
+        .signal-card { background: #1a2332; padding: 15px; border-radius: 8px; border-left: 4px solid #00d4ff; }
+        .signal-card.buy { border-left-color: #00ff88; }
+        .signal-card.sell { border-left-color: #ff4444; }
+        .signal-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .signal-symbol { font-size: 18px; font-weight: bold; color: #fff; }
+        .signal-direction { padding: 3px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+        .signal-direction.buy { background: #00ff88; color: #000; }
+        .signal-direction.sell { background: #ff4444; color: #fff; }
+        .signal-details { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; font-size: 13px; }
+        .signal-detail-label { color: #888; }
+        .signal-detail-value { color: #fff; font-weight: bold; }
+        .signal-strategy { font-size: 12px; color: #00d4ff; margin-top: 10px; }
+        
+        .right-panel { display: flex; flex-direction: column; gap: 20px; }
+        
+        .positions-table { width: 100%; border-collapse: collapse; }
+        .positions-table th { text-align: left; padding: 10px; color: #888; font-size: 12px; border-bottom: 1px solid #2d3a52; }
+        .positions-table td { padding: 10px; border-bottom: 1px solid #1a2332; }
+        .positions-table tr:hover { background: #1a2332; }
+        
+        .risk-indicator { padding: 15px; background: #1a2332; border-radius: 8px; }
+        .risk-item { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .risk-label { color: #888; font-size: 13px; }
+        .risk-value { font-weight: bold; }
+        .risk-value.warning { color: #ffaa00; }
+        .risk-value.danger { color: #ff4444; }
+        .risk-value.ok { color: #00ff88; }
+        
+        .loading { text-align: center; padding: 20px; color: #888; }
+        .error { background: #ff4444; color: #fff; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 15px; }
+        .tab-btn { padding: 8px 16px; background: transparent; border: 1px solid #2d3a52; color: #888; border-radius: 5px; cursor: pointer; }
+        .tab-btn.active { background: #00d4ff; color: #000; border-color: #00d4ff; }
+        
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .scanning { animation: pulse 1.5s infinite; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">APEX FX TRADING BOT</div>
+        <div class="status-indicator">
+            <span id="connectionStatus">Connecting...</span>
+            <div class="status-dot" id="statusDot"></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <h3>Watchlist</h3>
+            <div id="watchlist"></div>
+            <div class="add-symbol">
+                <input type="text" id="newSymbol" placeholder="Symbol (e.g. XAUUSD)">
+                <button onclick="addSymbol()">+</button>
+            </div>
+            
+            <h3 style="margin-top: 30px;">Categories</h3>
+            <div id="categories"></div>
+        </div>
+        
+        <div class="main-content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Balance</div>
+                    <div class="stat-value" id="balance">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Equity</div>
+                    <div class="stat-value" id="equity">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Profit/Loss</div>
+                    <div class="stat-value" id="profit">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Margin</div>
+                    <div class="stat-value" id="margin">$0.00</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">Trading Signals</div>
+                    <div>
+                        <button class="btn btn-primary" onclick="scanSignals()">Scan Now</button>
+                    </div>
+                </div>
+                <div id="signalsContainer"></div>
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">Open Positions</div>
+                </div>
+                <div id="positionsContainer">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">Risk Management</div>
+                </div>
+                <div id="riskContainer"></div>
+            </div>
+            
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-title">Performance</div>
+                </div>
+                <div id="statsContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedCategory = null;
+        
+        async function refresh() {
+            await Promise.all([
+                updateStatus(),
+                updateWatchlist(),
+                updatePositions(),
+                updateRisk(),
+                updateStats()
+            ]);
+        }
+        
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/account');
+                const data = await res.json();
+                
+                document.getElementById('connectionStatus').textContent = data.connected ? 'MT5 Connected' : 'MT5 Disconnected';
+                document.getElementById('statusDot').className = 'status-dot ' + (data.connected ? 'connected' : '');
+                
+                if (data.connected) {
+                    document.getElementById('balance').textContent = '$' + (data.balance || 0).toFixed(2);
+                    document.getElementById('equity').textContent = '$' + (data.equity || 0).toFixed(2);
+                    document.getElementById('profit').textContent = '$' + (data.profit || 0).toFixed(2);
+                    document.getElementById('margin').textContent = '$' + (data.margin_free || 0).toFixed(2);
+                    
+                    const profitEl = document.getElementById('profit');
+                    if (data.profit > 0) profitEl.className = 'stat-value positive';
+                    else if (data.profit < 0) profitEl.className = 'stat-value negative';
+                }
+            } catch(e) { console.error(e); }
+        }
+        
+        async function updateWatchlist() {
+            try {
+                const res = await fetch('/api/watchlist');
+                const data = await res.json();
+                
+                let html = '';
+                for (const symbol of data.watchlist) {
+                    html += `<div class="watchlist-item" onclick="showSymbol('${symbol}')">
+                        <span class="symbol-price">${symbol}</span>
+                        <span class="symbol-change">View</span>
+                    </div>`;
+                }
+                document.getElementById('watchlist').innerHTML = html || '<div class="loading">No symbols</div>';
+            } catch(e) { console.error(e); }
+            
+            // Categories
+            const categories = ['TREND', 'MEAN_REVERSION', 'BREAKOUT', 'GRID', 'SCALPING', 'CUSTOM'];
+            let catHtml = '';
+            for (const cat of categories) {
+                catHtml += `<div class="watchlist-item" onclick="selectCategory('${cat}')">
+                    <span>${cat.replace('_', ' ')}</span>
+                </div>`;
+            }
+            document.getElementById('categories').innerHTML = catHtml;
+        }
+        
+        async function updatePositions() {
+            try {
+                const res = await fetch('/api/positions');
+                const data = await res.json();
+                
+                if (data.positions.length === 0) {
+                    document.getElementById('positionsContainer').innerHTML = '<div class="loading">No open positions</div>';
+                    return;
+                }
+                
+                let html = '<table class="positions-table"><tr><th>Symbol</th><th>Type</th><th>Volume</th><th>P/L</th><th>Action</th></tr>';
+                for (const pos of data.positions) {
+                    const pnlClass = pos.profit >= 0 ? 'positive' : 'negative';
+                    html += `<tr>
+                        <td>${pos.symbol}</td>
+                        <td>${pos.type}</td>
+                        <td>${pos.volume}</td>
+                        <td class="${pnlClass}">$${pos.profit.toFixed(2)}</td>
+                        <td><button class="btn btn-danger" onclick="closePosition(${pos.ticket})">Close</button></td>
+                    </tr>`;
+                }
+                html += '</table>';
+                document.getElementById('positionsContainer').innerHTML = html;
+            } catch(e) { console.error(e); }
+        }
+        
+        async function updateRisk() {
+            try {
+                const res = await fetch('/api/risk/status');
+                const data = await res.json();
+                
+                const m = data.metrics;
+                let html = `
+                    <div class="risk-item"><span class="risk-label">Daily Loss</span><span class="risk-value ${m.daily_loss_pct >= m.daily_loss_limit_pct ? 'danger' : 'ok'}">${m.daily_loss_pct}% / ${m.daily_loss_limit_pct}%</span></div>
+                    <div class="risk-item"><span class="risk-label">Drawdown</span><span class="risk-value ${m.drawdown_pct > 10 ? 'danger' : 'ok'}">${m.drawdown_pct}%</span></div>
+                    <div class="risk-item"><span class="risk-label">Positions</span><span class="risk-value ${m.positions_count >= m.max_positions ? 'warning' : 'ok'}">${m.positions_count} / ${m.max_positions}</span></div>
+                    <div class="risk-item"><span class="risk-label">Consecutive Losses</span><span class="risk-value ${m.consecutive_losses >= 3 ? 'danger' : 'ok'}">${m.consecutive_losses}</span></div>
+                `;
+                
+                if (data.circuit_breaker.active) {
+                    html += `<div class="error">Circuit Breaker Active!</div>`;
+                }
+                
+                document.getElementById('riskContainer').innerHTML = html;
+            } catch(e) { console.error(e); }
+        }
+        
+        async function updateStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                
+                let html = `
+                    <div class="risk-item"><span class="risk-label">Total Trades</span><span class="risk-value">${data.total_trades || 0}</span></div>
+                    <div class="risk-item"><span class="risk-label">Win Rate</span><span class="risk-value">${data.win_rate || 0}%</span></div>
+                    <div class="risk-item"><span class="risk-label">Total Profit</span><span class="risk-value ${data.total_profit >= 0 ? 'positive' : 'negative'}">$${data.total_profit || 0}</span></div>
+                `;
+                document.getElementById('statsContainer').innerHTML = html;
+            } catch(e) { console.error(e); }
+        }
+        
+        async function scanSignals() {
+            try {
+                const res = await fetch('/api/signals/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({category: selectedCategory})
+                });
+                const data = await res.json();
+                displaySignals(data.signals);
+            } catch(e) { console.error(e); }
+        }
+        
+        function displaySignals(signals) {
+            if (!signals || signals.length === 0) {
+                document.getElementById('signalsContainer').innerHTML = '<div class="loading">No signals found</div>';
+                return;
+            }
+            
+            let html = '<div class="signals-grid">';
+            for (const sig of signals) {
+                const direction = sig.direction.toUpperCase();
+                const rr = ((sig.tp_price - sig.entry_price) / (sig.entry_price - sig.sl_price)).toFixed(2);
+                html += `<div class="signal-card ${direction === 'BUY' ? 'buy' : 'sell'}">
+                    <div class="signal-header">
+                        <span class="signal-symbol">${sig.symbol}</span>
+                        <span class="signal-direction ${direction.toLowerCase()}">${direction}</span>
+                    </div>
+                    <div class="signal-details">
+                        <div><div class="signal-detail-label">Entry</div><div class="signal-detail-value">${sig.entry_price.toFixed(5)}</div></div>
+                        <div><div class="signal-detail-label">SL</div><div class="signal-detail-value">${sig.sl_price.toFixed(5)}</div></div>
+                        <div><div class="signal-detail-label">TP</div><div class="signal-detail-value">${sig.tp_price.toFixed(5)}</div></div>
+                    </div>
+                    <div class="signal-details">
+                        <div><div class="signal-detail-label">R:R</div><div class="signal-detail-value">1:${rr}</div></div>
+                        <div><div class="signal-detail-label">Confidence</div><div class="signal-detail-value">${sig.confidence}%</div></div>
+                    </div>
+                    <div class="signal-strategy">${sig.strategy}</div>
+                    <button class="btn btn-success" style="width:100%;margin-top:10px" onclick="executeSignal('${sig.id}')">Execute Trade</button>
+                </div>`;
+            }
+            html += '</div>';
+            document.getElementById('signalsContainer').innerHTML = html;
+        }
+        
+        async function addSymbol() {
+            const input = document.getElementById('newSymbol');
+            const symbol = input.value.toUpperCase();
+            if (!symbol) return;
+            
+            await fetch('/api/watchlist/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({symbol})
+            });
+            
+            input.value = '';
+            updateWatchlist();
+        }
+        
+        function selectCategory(cat) {
+            selectedCategory = selectedCategory === cat ? null : cat;
+            scanSignals();
+        }
+        
+        async function executeSignal(signalId) {
+            alert('Trade execution would happen here. Signal: ' + signalId);
+        }
+        
+        async function closePosition(ticket) {
+            await fetch(`/api/positions/close/${ticket}`, {method: 'POST'});
+            refresh();
+        }
+        
+        // Initial load
+        refresh();
+        setInterval(refresh, 30000);
+    </script>
+</body>
+</html>

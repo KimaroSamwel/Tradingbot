@@ -2,6 +2,58 @@
 
 All notable changes to this trading system are documented here.
 
+---
+
+## [APEX v1.0.0] - 2026-04-08 - COMPLETE REBUILD (per PRD)
+
+### Overview
+Rebuilt entire system following `APEX_FX_Trading_Bot_PRD.pdf` specification.
+
+### New Architecture
+```
+APEX FX Trading Bot/
+├── main.py                    # Entry point
+├── src/
+│   ├── config/__init__.py     # Configuration manager
+│   ├── data/
+│   │   ├── database.py        # SQLite database
+│   │   ├── mt5_connector.py   # MT5 integration
+│   │   └── binance_connector.py  # Binance crypto
+│   ├── analysis/
+│   │   └── technical.py       # 30+ indicators + patterns
+│   ├── strategies/
+│   │   └── engine.py          # 6 strategy categories
+│   ├── risk/
+│   │   └── manager.py         # Full risk management
+│   ├── api/
+│   │   └── main.py            # Flask API (all endpoints)
+│   └── backtesting/
+│       └── engine.py          # Backtest engine
+├── config/
+│   ├── config.yaml            # Main config
+│   ├── mt5_config.yaml        # MT5 settings
+│   ├── strategies_config.yaml # Strategy definitions
+│   ├── watchlist.yaml         # Symbol watchlists
+│   └── risk_config.json       # Risk parameters
+└── templates/
+    └── index.html             # Dashboard UI
+```
+
+### Features Implemented
+- **30+ Technical Indicators**: EMA, SMA, RSI, MACD, Stochastic, Bollinger, ATR, Ichimoku, etc.
+- **6 Strategy Categories**: Trend, Mean Reversion, Breakout, Grid, Scalping, Custom
+- **Full Flask API**: 30+ endpoints for all operations
+- **SQLite Database**: Persistent storage for trades, signals, performance
+- **Risk Management**: Position sizing, drawdown limits, circuit breaker, correlation
+- **Dashboard UI**: Real-time monitoring, signals, positions, risk metrics
+
+### Moved to _unused
+- web_controller_v22.py (old dashboard)
+- signals_v22.py (old CLI scanner)
+- template_v22.html (old UI)
+
+---
+
 ## [v22] - 2026-04-08 - HUMAN-IN-THE-LOOP REBUILD
 
 ### Changed

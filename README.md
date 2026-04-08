@@ -1,25 +1,19 @@
-# Trading Bot v22 - Human-in-the-Loop System
+# APEX FX Trading Bot
 
-**Signal Scanner + Trade Journal + Strict Risk Management**
+**Production-Ready Multi-Market Trading System**
+*Following PRD Specification v1.0*
 
 ---
 
 ## Overview
 
-This is a **human-in-the-loop trading system** - the bot scans and displays signals, but **you make the execution decisions**. No auto-trading.
-
-### Why Human-in-the-Loop?
-
-- **AI/ML bots learn from historical data** but Forex is driven by real-time news, politics, central bank decisions, and mass human emotion - none of which follow past patterns
-- **Without a proven edge** (100+ trades with proper data), a bot has no stable foundation
-- **Risk management gaps** - one or two catastrophic losses can wipe gains from many winning trades
-
-### Solution
-
-- Human executes trades (prevents emotional/automated mistakes)
-- 2 simple, proven strategies (not 110+)
-- Strict circuit breaker prevents wipeout
-- Trade journal tracks all decisions for analysis
+APEX FX Trading Bot is a professional-grade algorithmic trading system supporting:
+- **Multi-source data**: MT5 (Forex/Metals), Binance (Crypto), Polygon (Stocks)
+- **30+ Technical Indicators** with pattern recognition
+- **6 Strategy Categories**: Trend, Mean Reversion, Breakout, Grid, Scalping, Custom
+- **Strict Risk Management**: Position sizing, drawdown limits, max positions, correlation limits
+- **Full Backend**: Flask API, SQLite database, real-time updates, Telegram alerts
+- **Backtesting**: Historical backtesting, walk-forward validation, parameter optimization
 
 ---
 
@@ -29,87 +23,130 @@ This is a **human-in-the-loop trading system** - the bot scans and displays sign
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the dashboard
-python web_controller.py
+# Run the bot
+python main.py
 
-# Open in browser
-http://127.0.0.1:5000
+# Open dashboard
+http://localhost:5000
 ```
 
 ---
 
-## How It Works
-
-1. **Bot scans** all pairs → displays signals on dashboard
-2. **You review:** H4 trend, H1 entry, RSI, ADX, spread, session
-3. **You click Execute** → trade placed (never auto-execute)
-4. **Risk rules enforced** automatically
-
----
-
-## Strategies (2 Only)
-
-| Strategy | Description | Best For |
-|----------|-------------|----------|
-| **Swing_H4H1** (Primary) | H4 EMA20/50 + H1 EMA9/21 + RSI + ADX | XAUUSD, EURUSD, GBPUSD |
-| **Trend_Rider** (Secondary) | ADX > 20 + EMA trend confirmation | Trending markets |
-
----
-
-## Risk Management (Strict)
-
-| Rule | Value |
-|------|-------|
-| Risk per trade | 1% of account |
-| Max positions | 2 |
-| Daily loss limit | 2% → STOP trading |
-| Circuit breaker | 3 consecutive losses = 4hr pause |
-| Stop Loss | 1.5x ATR (volatility-based) |
-| Take Profit | 2:1 R:R minimum |
-
----
-
-## Trade Journal
-
-All trades automatically recorded with:
-- Timestamp, symbol, direction
-- Entry/exit prices, lot size
-- Profit/loss, strategy used
-- Status (OPEN/CLOSED)
-
-View in dashboard under "Journal Stats"
-
----
-
-## File Structure
+## Architecture
 
 ```
-TradingBot/
-├── web_controller.py     # Main dashboard (v22)
-├── signals.py            # CLI signal scanner
-├── template.html         # Dashboard UI
-├── CHANGELOG.md          # Version history
-├── config/               # Configuration
-├── _unused/              # Disabled/legacy code
-├── src/                  # Reference library (not used for live)
-├── MQL5/                 # MT5 Expert Advisors
-└── requirements.txt      # Dependencies
+APEX FX Trading Bot/
+├── main.py                    # Entry point
+├── src/
+│   ├── config/               # Configuration management
+│   ├── data/                 # Database & connectors
+│   │   ├── database.py       # SQLite database
+│   │   ├── mt5_connector.py  # MT5 integration
+│   │   └── binance_connector.py  # Binance crypto
+│   ├── analysis/
+│   │   └── technical.py      # 30+ technical indicators
+│   ├── strategies/
+│   │   └── engine.py         # Strategy engine (6 categories)
+│   ├── risk/
+│   │   └── manager.py        # Risk management
+│   ├── api/
+│   │   └── main.py           # Flask API
+│   ├── monitoring/           # Performance tracking
+│   └── backtesting/          # Backtesting engine
+├── config/                   # Configuration files
+├── templates/
+│   └── index.html            # Dashboard UI
+└── apex_trading.db           # SQLite database
 ```
 
 ---
 
-## Requirements
+## Features
 
-- Python 3.8+
-- MetaTrader5 terminal
-- Demo account (start here!)
+### Technical Analysis (30+ Indicators)
+- **Trend**: EMA, SMA, Parabolic SAR, Ichimoku, Supertrend
+- **Momentum**: RSI, Stochastic, MACD, CCI, Williams %R, ROC
+- **Volatility**: ATR, Bollinger Bands, Keltner Channel, Donchian
+- **Volume**: MFI, OBV, VWAP
+- **Patterns**: Doji, Hammer, Engulfing, Morning/Evening Star
+
+### Strategy Categories
+1. **Trend Following**: EMA Crossover, Supertrend, Ichimoku
+2. **Mean Reversion**: RSI, Bollinger Bounce, Stochastic
+3. **Breakout**: Donchian, Higher Highs
+4. **Grid Trading**: Range-bound strategies
+5. **Scalping**: AO Cross, Volume Spike
+6. **Custom/AI**: Multi-factor confluence
+
+### Risk Management
+- Position sizing (Kelly Criterion available)
+- Max risk per trade (1% default)
+- Daily loss limit (2%)
+- Max concurrent positions (3)
+- Circuit breaker after 3 consecutive losses
+- Correlation limits
+
+### Data Sources
+- **MT5**: Forex, Metals (XAUUSD, etc.)
+- **Binance**: Crypto (BTCUSDT, etc.)
+- **Polygon**: Stocks (future)
+
+---
+
+## API Endpoints
+
+### Account
+- `GET /api/account` - Account info
+- `POST /api/account/connect` - Connect MT5
+- `POST /api/account/disconnect` - Disconnect MT5
+
+### Positions
+- `GET /api/positions` - Open positions
+- `POST /api/positions/open` - Open position
+- `POST /api/positions/close/<ticket>` - Close position
+- `POST /api/positions/close-all` - Close all
+
+### Signals
+- `GET /api/signals` - Recent signals
+- `POST /api/signals/scan` - Scan for signals
+
+### Watchlist
+- `GET /api/watchlist` - Get watchlist
+- `POST /api/watchlist` - Update watchlist
+- `POST /api/watchlist/add` - Add symbol
+- `POST /api/watchlist/remove/<symbol>` - Remove symbol
+
+### Market Data
+- `GET /api/market/ohlc` - OHLC data
+- `GET /api/market/indicators` - Technical indicators
+- `GET /api/market/symbols` - Available symbols
+
+### Risk
+- `GET /api/risk/status` - Risk status
+- `POST /api/risk/validate` - Validate trade
+
+### Stats
+- `GET /api/stats` - Trading statistics
+- `GET /api/stats/performance` - Performance history
+- `GET /api/stats/trades` - Trade history
+
+---
+
+## Configuration
+
+Edit `config/config.yaml` to customize:
+- Broker settings (MT5, Binance)
+- Trading parameters (risk, positions)
+- Symbol lists
+- Timeframes
+- Sessions
 
 ---
 
 ## Disclaimer
 
-**Trading involves substantial risk.** Start with paper trading, track your win rate, and only trade with capital you can afford to lose.
+**Trading involves substantial risk.** Only trade with capital you can afford to lose. Always use proper risk management and test strategies thoroughly before live trading.
 
 ---
 
-*Last Updated: 2026-04-08 | Version: v22*
+*Version: 1.0.0 | Built: 2026-04-08*

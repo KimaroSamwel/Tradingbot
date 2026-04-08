@@ -1,0 +1,44 @@
+# APEX FX Trading Bot - Watchlist
+
+watchlist:
+  default:
+    - XAUUSD
+    - EURUSD
+    - GBPUSD
+    - USDJPY
+    - AUDUSD
+    - USDCAD
+    
+  session_based:
+    london:
+      - XAUUSD
+      - EURUSD
+      - GBPUSD
+      
+    new_york:
+      - EURUSD
+      - GBPUSD
+      - USDCAD
+      
+    tokyo:
+      - USDJPY
+      - AUDUSD
+      
+    sydney:
+      - AUDUSD
+      - NZDUSD
+      
+  custom_groups:
+    gold:
+      - XAUUSD
+      - XAGUSD
+      
+    majors:
+      - EURUSD
+      - GBPUSD
+      - USDJPY
+      
+    commodities:
+      - XAUUSD
+      - USDCAD
+      - AUDUSD
