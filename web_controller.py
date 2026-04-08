@@ -67,10 +67,38 @@ class TradingBot:
         self.daily_start_balance = 0
         self.daily_trades = []
         self.trade_journal = []  # Complete trade history
+        self._last_journal_save = None
+        
+    def _load_journal(self):
+        """Load journal from file on startup"""
+        journal_file = os.path.join(os.path.dirname(__file__), 'trade_journal.json')
+        if os.path.exists(journal_file):
+            try:
+                import json
+                with open(journal_file, 'r') as f:
+                    self.trade_journal = json.load(f)
+                print(f"Loaded {len(self.trade_journal)} trades from journal")
+            except Exception as e:
+                print(f"Failed to load journal: {e}")
+                self.trade_journal = []
+                
+    def _save_journal(self):
+        """Save journal to file"""
+        if not self.trade_journal:
+            return
+        try:
+            import json
+            journal_file = os.path.join(os.path.dirname(__file__), 'trade_journal.json')
+            with open(journal_file, 'w') as f:
+                json.dump(self.trade_journal, f, indent=2)
+            self._last_journal_save = datetime.now(self.broker_tz)
+        except Exception as e:
+            print(f"Failed to save journal: {e}")
         
     def _save_journal_entry(self, trade_data):
         """Save trade to journal"""
         entry = {
+            'id': len(self.trade_journal) + 1,
             'timestamp': datetime.now(self.broker_tz).isoformat(),
             'symbol': trade_data.get('symbol'),
             'direction': trade_data.get('direction'),
@@ -86,6 +114,7 @@ class TradingBot:
             'notes': trade_data.get('notes', '')
         }
         self.trade_journal.append(entry)
+        self._save_journal()  # Persist to file
         
     def _check_circuit_breaker(self):
         """Check if circuit breaker should be triggered"""
@@ -1035,20 +1064,43 @@ class TradingBot:
         result = mt5.order_send(request)
         
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-            # Update journal with exit
-            self._save_journal_entry({
-                'symbol': pos.symbol,
-                'direction': 'CLOSE',
-                'entry': pos.price_open,
-                'exit_price': price,
-                'lot': pos.volume,
-                'profit': pos.profit,
-                'sl': pos.sl,
-                'tp': pos.tp,
-                'strategy': 'TradingBot',
-                'status': 'CLOSED',
-                'notes': f"Ticket {ticket} closed"
-            })
+            # Find and update the OPEN entry for this position
+            entry_updated = False
+            for entry in self.trade_journal:
+                if entry.get('status') == 'OPEN' and entry.get('symbol') == pos.symbol:
+                    entry['exit_price'] = price
+                    entry['profit'] = pos.profit
+                    entry['status'] = 'CLOSED'
+                    
+                    # Calculate duration
+                    if entry.get('timestamp'):
+                        try:
+                            open_time = datetime.fromisoformat(entry['timestamp'])
+                            close_time = datetime.now(self.broker_tz)
+                            entry['duration_hours'] = round((close_time - open_time).total_seconds() / 3600, 2)
+                        except:
+                            pass
+                    entry['notes'] = f"Ticket {ticket} closed - P/L: ${pos.profit:.2f}"
+                    entry_updated = True
+                    break
+            
+            if not entry_updated:
+                # Fallback: create new entry if no matching OPEN found
+                self._save_journal_entry({
+                    'symbol': pos.symbol,
+                    'direction': 'CLOSE',
+                    'entry': pos.price_open,
+                    'exit_price': price,
+                    'lot': pos.volume,
+                    'profit': pos.profit,
+                    'sl': pos.sl,
+                    'tp': pos.tp,
+                    'strategy': 'TradingBot',
+                    'status': 'CLOSED',
+                    'notes': f"Ticket {ticket} closed"
+                })
+            
+            self._save_journal()  # Persist updates
             
             # Update consecutive losses for circuit breaker
             if pos.profit < 0:
@@ -1103,19 +1155,31 @@ class TradingBot:
     def get_journal_stats(self):
         """Get trade journal statistics"""
         if not self.trade_journal:
-            return {'total_trades': 0, 'wins': 0, 'losses': 0, 'win_rate': 0, 'total_profit': 0}
+            return {
+                'total_trades': 0, 'wins': 0, 'losses': 0, 'win_rate': 0,
+                'total_profit': 0, 'avg_win': 0, 'avg_loss': 0,
+                'largest_win': 0, 'largest_loss': 0, 'avg_duration_hours': 0
+            }
         
-        closed = [t for t in self.trade_journal if t['status'] == 'CLOSED']
-        wins = len([t for t in closed if t['profit'] > 0])
-        losses = len([t for t in closed if t['profit'] < 0])
-        total_profit = sum(t['profit'] for t in closed)
+        closed = [t for t in self.trade_journal if t.get('status') == 'CLOSED' and t.get('profit', 0) != 0]
+        wins = [t for t in closed if t.get('profit', 0) > 0]
+        losses = [t for t in closed if t.get('profit', 0) < 0]
+        
+        win_profits = [t['profit'] for t in wins]
+        loss_profits = [t['profit'] for t in losses]
+        durations = [t.get('duration_hours', 0) for t in closed if t.get('duration_hours')]
         
         return {
             'total_trades': len(closed),
-            'wins': wins,
-            'losses': losses,
-            'win_rate': round((wins / len(closed) * 100), 1) if closed else 0,
-            'total_profit': round(total_profit, 2)
+            'wins': len(wins),
+            'losses': len(losses),
+            'win_rate': round((len(wins) / len(closed) * 100), 1) if closed else 0,
+            'total_profit': round(sum(t['profit'] for t in closed), 2),
+            'avg_win': round(sum(win_profits) / len(win_profits), 2) if win_profits else 0,
+            'avg_loss': round(sum(loss_profits) / len(loss_profits), 2) if losses else 0,
+            'largest_win': round(max(win_profits), 2) if win_profits else 0,
+            'largest_loss': round(min(loss_profits), 2) if losses else 0,
+            'avg_duration_hours': round(sum(durations) / len(durations), 1) if durations else 0
         }
     
     def get_status(self, history_days=7, history_hours=0):
@@ -1184,6 +1248,7 @@ class TradingBot:
 
 
 bot = TradingBot()
+bot._load_journal()  # Load trade journal from file
 bot.initialize()
 
 

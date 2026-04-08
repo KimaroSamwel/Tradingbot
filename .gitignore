@@ -33,3 +33,7 @@ models/
 # Temp
 *.tmp
 temp/
+
+# Trading Data (local only)
+trade_journal.json
+trades.csv
