@@ -1,426 +1,461 @@
 """
 APEX FX Trading Bot - Strategy Engine
-6 Strategy Categories with 30+ Strategies
+Section 4: Strategy Architecture
+6 instrument-specific strategy modules + Regime Detection Engine (RDE)
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
-import json
+from enum import Enum
 
+
+class MarketRegime(Enum):
+    """Section 4.1 - Regime Detection Engine (RDE)"""
+    TRENDING = "TRENDING"
+    RANGING = "RANGING"
+    BREAKOUT_PENDING = "BREAKOUT_PENDING"
+    AVOID = "AVOID"
+
+
+class RegimeDetector:
+    """
+    Regime Detection Engine (RDE)
+    Runs on every new bar close, classifies market into one of three regimes
+    """
+    
+    @staticmethod
+    def detect(df: pd.DataFrame) -> MarketRegime:
+        """Detect current market regime"""
+        if len(df) < 50:
+            return MarketRegime.AVOID
+        
+        # Calculate ADX
+        adx = RegimeDetector._calculate_adx(df)
+        
+        # Calculate ATR expansion/contraction
+        atr_current = df['high'].iloc[-1] - df['low'].iloc[-1]
+        atr_avg = (df['high'] - df['low']).rolling(14).mean().iloc[-1]
+        
+        # Calculate Bollinger Band width
+        bb_width = RegimeDetector._bollinger_width(df)
+        bb_width_avg = bb_width.rolling(20).mean().iloc[-1]
+        
+        # Decision logic
+        if adx > 25 and atr_current > atr_avg:
+            return MarketRegime.TRENDING
+        elif adx < 20 and bb_width < bb_width_avg * 0.8:
+            return MarketRegime.RANGING
+        elif bb_width < bb_width_avg * 0.5:
+            return MarketRegime.BREAKOUT_PENDING
+        elif 20 <= adx <= 25:
+            return MarketRegime.AVOID
+        else:
+            return MarketRegime.AVOID
+    
+    @staticmethod
+    def _calculate_adx(df: pd.DataFrame) -> float:
+        """Calculate ADX(14)"""
+        high = df['high']
+        low = df['low']
+        close = df['close']
+        
+        plus_dm = high.diff()
+        minus_dm = -low.diff()
+        
+        plus_dm[plus_dm < 0] = 0
+        minus_dm[minus_dm < 0] = 0
+        
+        tr = pd.concat([
+            high - low,
+            abs(high - close.shift()),
+            abs(low - close.shift())
+        ], axis=1).max(axis=1)
+        
+        atr = tr.rolling(14).mean()
+        
+        plus_di = 100 * (plus_dm.rolling(14).mean() / atr)
+        minus_di = 100 * (minus_dm.rolling(14).mean() / atr)
+        
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        adx = dx.rolling(14).mean()
+        
+        return adx.iloc[-1] if not pd.isna(adx.iloc[-1]) else 20
+    
+    @staticmethod
+    def _bollinger_width(df: pd.DataFrame) -> pd.Series:
+        """Bollinger Band width"""
+        sma = df['close'].rolling(20).mean()
+        std = df['close'].rolling(20).std()
+        upper = sma + (std * 2)
+        lower = sma - (std * 2)
+        return (upper - lower) / sma
+
+
+# Section 4.2-4.7: Per-Instrument Strategy Classes
+
+class EURUSDStrategy:
+    """
+    Section 4.2 EUR/USD - Multi-Timeframe Trend Following + Session Breakout
+    Primary: EMA Crossover Trend System (H4 trend, H1 entry)
+    Secondary: London Session Breakout
+    """
+    
+    @staticmethod
+    def get_signals(df_h4: pd.DataFrame, df_h1: pd.DataFrame, regime: MarketRegime) -> List[Dict]:
+        signals = []
+        
+        if regime == MarketRegime.TRENDING:
+            # Primary: EMA Crossover on H1 with H4 trend confirmation
+            h4_trend = EURUSDStrategy._get_h4_trend(df_h4)
+            h1_signal = EURUSDStrategy._ema_crossover_signal(df_h1)
+            
+            if h1_signal and h4_trend == h1_signal['direction']:
+                # Entry filters
+                rsi = df_h1['close'].diff().apply(lambda x: 100 - (100 / (1 + x)) if x > 0 else 0).rolling(14).mean().iloc[-1]
+                if not ((h1_signal['direction'] == 'BUY' and rsi > 70) or 
+                        (h1_signal['direction'] == 'SELL' and rsi < 30)):
+                    signals.append({
+                        'strategy': 'EURUSD_EMA_CROSSOVER',
+                        'direction': h1_signal['direction'],
+                        'confidence': 75,
+                        'timeframe': 'H1',
+                        'regime': regime.value,
+                        'entry': df_h1['close'].iloc[-1],
+                        'reason': f"EMA crossover with H4 trend confirmation"
+                    })
+        
+        elif regime == MarketRegime.BREAKOUT_PENDING:
+            # Secondary: London Session Breakout (06:00-08:00 UTC range)
+            # Simplified: check for breakout after range formation
+            signals.append({
+                'strategy': 'EURUSD_LONDON_BREAKOUT',
+                'direction': None,  # Would determine direction based on breakout
+                'confidence': 60,
+                'timeframe': 'M15',
+                'regime': regime.value,
+                'entry': df_h1['close'].iloc[-1],
+                'reason': 'London session breakout (secondary)'
+            })
+        
+        return signals
+    
+    @staticmethod
+    def _get_h4_trend(df: pd.DataFrame) -> str:
+        ema20 = df['close'].ewm(span=20).mean().iloc[-1]
+        ema50 = df['close'].ewm(span=50).mean().iloc[-1]
+        return 'BUY' if ema20 > ema50 else 'SELL'
+    
+    @staticmethod
+    def _ema_crossover_signal(df: pd.DataFrame) -> Optional[Dict]:
+        ema9 = df['close'].ewm(span=9).mean()
+        ema21 = df['close'].ewm(span=21).mean()
+        
+        if len(ema9) < 2:
+            return None
+            
+        if ema9.iloc[-1] > ema21.iloc[-1] and ema9.iloc[-2] <= ema21.iloc[-2]:
+            return {'direction': 'BUY', 'price': df['close'].iloc[-1]}
+        elif ema9.iloc[-1] < ema21.iloc[-1] and ema9.iloc[-2] >= ema21.iloc[-2]:
+            return {'direction': 'SELL', 'price': df['close'].iloc[-1]}
+        
+        return None
+
+
+class GBPUSDStrategy:
+    """
+    Section 4.3 GBP/USD - Momentum Breakout + Fibonacci Retracement
+    Primary: London Open Momentum
+    Secondary: Fibonacci Pullback
+    """
+    
+    @staticmethod
+    def get_signals(df_h1: pd.DataFrame, df_m15: pd.DataFrame, regime: MarketRegime) -> List[Dict]:
+        signals = []
+        
+        if regime == MarketRegime.TRENDING:
+            # Primary: Momentum breakout with Bollinger Bands
+            bb_upper = df_m15['close'].rolling(20).mean() + 2 * df_m15['close'].rolling(20).std()
+            atr = (df_m15['high'] - df_m15['low']).rolling(14).mean()
+            
+            if df_m15['close'].iloc[-1] > bb_upper.iloc[-1] and atr.iloc[-1] > atr.rolling(30).mean().iloc[-1]:
+                ema50 = df_h1['close'].ewm(span=50).mean().iloc[-1]
+                if df_h1['close'].iloc[-1] > ema50:
+                    signals.append({
+                        'strategy': 'GBPUSD_LONDON_MOMENTUM',
+                        'direction': 'BUY',
+                        'confidence': 70,
+                        'timeframe': 'M15',
+                        'regime': regime.value,
+                        'entry': df_m15['close'].iloc[-1],
+                        'reason': 'Bollinger breakout + ATR confirmation'
+                    })
+        
+        elif regime == MarketRegime.TRENDING:
+            # Secondary: Fibonacci retracement
+            signals.append({
+                'strategy': 'GBPUSD_FIBONACCI_PULLBACK',
+                'direction': None,
+                'confidence': 55,
+                'timeframe': 'H1',
+                'regime': regime.value,
+                'entry': df_h1['close'].iloc[-1],
+                'reason': 'Fibonacci retracement (secondary)'
+            })
+        
+        return signals
+
+
+class USDJPYStrategy:
+    """
+    Section 4.4 USD/JPY - Carry Trade Momentum + BoJ Intervention Filter
+    Primary: Multi-Session Trend
+    """
+    
+    @staticmethod
+    def get_signals(df_d1: pd.DataFrame, df_h4: pd.DataFrame, df_h1: pd.DataFrame, regime: MarketRegime) -> List[Dict]:
+        signals = []
+        
+        if regime == MarketRegime.TRENDING:
+            # Primary: D1 200 EMA bias, H4 50 EMA trend, Stochastic confirmation
+            ema200 = df_d1['close'].ewm(span=200).mean().iloc[-1]
+            ema50 = df_h4['close'].ewm(span=50).mean().iloc[-1]
+            
+            if df_d1['close'].iloc[-1] > ema200 and ema50 > 0:  # H4 EMA sloping up
+                # Stochastic oversold cross
+                stoch_k = (df_h1['close'] - df_h1['low'].rolling(5).min()) / \
+                          (df_h1['high'].rolling(5).max() - df_h1['low'].rolling(5).min()) * 100
+                
+                if stoch_k.iloc[-1] > 20 and stoch_k.iloc[-2] < 20:
+                    signals.append({
+                        'strategy': 'USDJPY_CARRY_TREND',
+                        'direction': 'BUY',
+                        'confidence': 65,
+                        'timeframe': 'H1',
+                        'regime': regime.value,
+                        'entry': df_h1['close'].iloc[-1],
+                        'reason': 'D1 trend + H4 momentum + stochastic confirmation'
+                    })
+        
+        return signals
+
+
+class USDCHFStrategy:
+    """
+    Section 4.5 USD/CHF - Mean Reversion + EUR/USD Divergence
+    Primary: Bollinger Band Mean Reversion
+    """
+    
+    @staticmethod
+    def get_signals(df_h1: pd.DataFrame, df_h4: pd.DataFrame, eurusd_regime: MarketRegime, regime: MarketRegime) -> List[Dict]:
+        signals = []
+        
+        if regime == MarketRegime.RANGING and eurusd_regime != MarketRegime.TRENDING:
+            # Primary: Bollinger Band mean reversion
+            bb_middle = df_h1['close'].rolling(20).mean()
+            bb_upper = bb_middle + 2 * df_h1['close'].rolling(20).std()
+            bb_lower = bb_middle - 2 * df_h1['close'].rolling(20).std()
+            
+            rsi = 100 - (100 / (1 + (df_h1['close'].diff().apply(lambda x: x if x > 0 else 0).rolling(14).mean() / 
+                                  -df_h1['close'].diff().apply(lambda x: x if x < 0 else 0).rolling(14).mean())))
+            rsi_val = rsi.iloc[-1]
+            
+            if df_h1['close'].iloc[-1] <= bb_lower.iloc[-1] and rsi_val < 30:
+                signals.append({
+                    'strategy': 'USDCHF_BB_MEAN_REV',
+                    'direction': 'BUY',
+                    'confidence': 60,
+                    'timeframe': 'H1',
+                    'regime': regime.value,
+                    'entry': df_h1['close'].iloc[-1],
+                    'reason': 'Bollinger lower band + RSI oversold'
+                })
+            elif df_h1['close'].iloc[-1] >= bb_upper.iloc[-1] and rsi_val > 70:
+                signals.append({
+                    'strategy': 'USDCHF_BB_MEAN_REV',
+                    'direction': 'SELL',
+                    'confidence': 60,
+                    'timeframe': 'H1',
+                    'regime': regime.value,
+                    'entry': df_h1['close'].iloc[-1],
+                    'reason': 'Bollinger upper band + RSI overbought'
+                })
+        
+        return signals
+
+
+class USDCADStrategy:
+    """
+    Section 4.6 USD/CAD - Oil-Correlated Trend Following
+    Primary: WTI Crude Oil Correlation Trend
+    """
+    
+    @staticmethod
+    def get_signals(df_h4: pd.DataFrame, df_h1: pd.DataFrame, oil_price: float, regime: MarketRegime) -> List[Dict]:
+        signals = []
+        
+        # In production, would fetch real WTI price
+        oil_trend = 'DOWN' if oil_price < 75 else 'UP'
+        
+        if regime == MarketRegime.TRENDING:
+            # EMA crossover confirmed by oil direction
+            ema50 = df_h1['close'].ewm(span=50).mean()
+            ema200 = df_h1['close'].ewm(span=200).mean()
+            
+            if ema50.iloc[-1] > ema200.iloc[-1]:  # Bullish
+                if oil_trend == 'DOWN':  # Oil down = CAD up = USD/CAD up
+                    signals.append({
+                        'strategy': 'USDCAD_OIL_TREND',
+                        'direction': 'BUY',
+                        'confidence': 70,
+                        'timeframe': 'H1',
+                        'regime': regime.value,
+                        'entry': df_h1['close'].iloc[-1],
+                        'reason': f'EMA bullish + oil trending {oil_trend}'
+                    })
+            else:  # Bearish
+                if oil_trend == 'UP':
+                    signals.append({
+                        'strategy': 'USDCAD_OIL_TREND',
+                        'direction': 'SELL',
+                        'confidence': 70,
+                        'timeframe': 'H1',
+                        'regime': regime.value,
+                        'entry': df_h1['close'].iloc[-1],
+                        'reason': f'EMA bearish + oil trending {oil_trend}'
+                    })
+        
+        return signals
+
+
+class XAUUSDStrategy:
+    """
+    Section 4.7 XAU/USD - Multi-Timeframe Trend + Breakout Hybrid
+    Primary: 200 EMA Trend System
+    Secondary: Session Open Breakout
+    """
+    
+    @staticmethod
+    def get_signals(df_d1: pd.DataFrame, df_h4: pd.DataFrame, df_h1: pd.DataFrame, regime: MarketRegime) -> List[Dict]:
+        signals = []
+        
+        if regime == MarketRegime.TRENDING:
+            # Primary: D1 200 EMA trend + H4 50 EMA pullback
+            ema200_d1 = df_d1['close'].ewm(span=200).mean().iloc[-1]
+            ema50_h4 = df_h4['close'].ewm(span=50).mean().iloc[-1]
+            
+            if df_d1['close'].iloc[-1] > ema200_d1:  # D1 bullish
+                if df_h4['close'].iloc[-1] >= ema50_h4:  # Price at H4 50 EMA pullback
+                    rsi = 100 - (100 / (1 + (df_h4['close'].diff().apply(lambda x: x if x > 0 else 0).rolling(14).mean() / 
+                                          -df_h4['close'].diff().apply(lambda x: x if x < 0 else 0).rolling(14).mean())))
+                    rsi_val = rsi.iloc[-1]
+                    
+                    if 40 < rsi_val < 60:  # RSI neutral, not exhausted
+                        signals.append({
+                            'strategy': 'XAUUSD_EMA_TREND',
+                            'direction': 'BUY',
+                            'confidence': 75,
+                            'timeframe': 'H4',
+                            'regime': regime.value,
+                            'entry': df_h4['close'].iloc[-1],
+                            'reason': 'D1 uptrend + H4 pullback to 50 EMA + RSI neutral'
+                        })
+        
+        elif regime == MarketRegime.BREAKOUT_PENDING:
+            # Secondary: Session open breakout (London/NY)
+            signals.append({
+                'strategy': 'XAUUSD_SESSION_BREAKOUT',
+                'direction': None,
+                'confidence': 60,
+                'timeframe': 'M15',
+                'regime': regime.value,
+                'entry': df_h1['close'].iloc[-1],
+                'reason': 'Session open breakout (secondary)'
+            })
+        
+        return signals
+
+
+# Main Strategy Engine
 
 class StrategyEngine:
-    """Multi-strategy trading engine"""
+    """
+    APEX FX Strategy Engine
+    Section 4: Strategy Architecture
+    Combines RDE with per-instrument strategy modules
+    """
     
-    CATEGORIES = {
-        'TREND': 'Trend Following',
-        'MEAN_REVERSION': 'Mean Reversion',
-        'BREAKOUT': 'Breakout',
-        'GRID': 'Grid Trading',
-        'SCALPING': 'Scalping',
-        'CUSTOM': 'Custom/AI'
+    # All 6 instruments
+    INSTRUMENTS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'USDCAD', 'XAUUSD']
+    
+    # Strategy mapping
+    STRATEGIES = {
+        'EURUSD': EURUSDStrategy,
+        'GBPUSD': GBPUSDStrategy,
+        'USDJPY': USDJPYStrategy,
+        'USDCHF': USDCHFStrategy,
+        'USDCAD': USDCADStrategy,
+        'XAUUSD': XAUUSDStrategy
     }
     
     def __init__(self, ta=None):
         self.ta = ta
-        self.active_strategies = []
-        self.strategy_params = {}
+        self.regime_detector = RegimeDetector()
+    
+    def scan_instrument(self, symbol: str, data: Dict[str, pd.DataFrame]) -> List[Dict]:
+        """Scan single instrument for trading opportunities"""
         
-    def scan_symbol(self, symbol: str, df: pd.DataFrame, category: str = None) -> List[Dict[str, Any]]:
-        """Scan symbol for trading opportunities"""
-        signals = []
-        
-        # Calculate indicators
-        if self.ta:
-            indicators = self.ta.calculate_all(df)
+        # Get regime for this instrument
+        if 'H1' in data:
+            regime = self.regime_detector.detect(data['H1'])
         else:
-            from src.analysis.technical import TechnicalAnalysis
-            self.ta = TechnicalAnalysis()
-            indicators = self.ta.calculate_all(df)
+            regime = MarketRegime.AVOID
         
-        # Scan by category
-        if category:
-            signals.extend(self._scan_category(category, symbol, df, indicators))
-        else:
-            for cat in self.CATEGORIES.keys():
-                signals.extend(self._scan_category(cat, symbol, df, indicators))
+        # Get EUR/USD regime for USD/CHF correlation filter
+        eurusd_regime = MarketRegime.TRENDING
+        if 'EURUSD' in data:
+            eurusd_regime = self.regime_detector.detect(data['EURUSD'])
         
-        return signals
-    
-    def _scan_category(self, category: str, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan specific category"""
-        strategies = {
-            'TREND': self._scan_trend_strategies,
-            'MEAN_REVERSION': self._scan_mean_reversion_strategies,
-            'BREAKOUT': self._scan_breakout_strategies,
-            'GRID': self._scan_grid_strategies,
-            'SCALPING': self._scan_scalping_strategies,
-            'CUSTOM': self._scan_custom_strategies
-        }
+        # Get strategy class for this instrument
+        strategy_class = self.STRATEGIES.get(symbol, EURUSDStrategy)
         
-        return strategies.get(category, lambda s, d, i: [])(symbol, df, indicators)
-    
-    # ==================== TREND STRATEGIES ====================
-    
-    def _scan_trend_strategies(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan trend-based strategies"""
-        signals = []
-        trend = indicators.get('trend', {})
-        momentum = indicators.get('momentum', {})
+        # Get signals based on available timeframes
+        signals = strategy_class.get_signals(
+            data.get('H4', pd.DataFrame()),
+            data.get('H1', pd.DataFrame()),
+            data.get('D1', pd.DataFrame()),
+            data.get('M15', pd.DataFrame()),
+            regime=regime,
+            eurusd_regime=eurusd_regime,
+            oil_price=75.0  # Simplified - would fetch real oil price
+        )
         
-        # EMA Crossover Strategy
-        if trend.get('ema_9_above_21') == 1 and trend.get('price_above_sma200') == 1:
-            signals.append({
-                'id': f'{symbol}_EMA_CROSSUP_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'EMA_CROSSUP',
-                'category': 'TREND',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': trend.get('sma_50', df['close'].iloc[-1] * 0.99),
-                'tp_price': df['close'].iloc[-1] * 1.02,
-                'confidence': 75,
-                'indicators': trend,
-                'reason': 'EMA 9/21 crossover with price above SMA200'
-            })
-        
-        # EMA Crossover Down
-        if trend.get('ema_9_above_21') == 0 and trend.get('price_above_sma200') == 0:
-            signals.append({
-                'id': f'{symbol}_EMA_CROSSDOWN_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'EMA_CROSSDOWN',
-                'category': 'TREND',
-                'direction': 'SELL',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': trend.get('sma_50', df['close'].iloc[-1] * 1.01),
-                'tp_price': df['close'].iloc[-1] * 0.98,
-                'confidence': 75,
-                'indicators': trend,
-                'reason': 'EMA 9/21 crossover down with price below SMA200'
-            })
-        
-        # Supertrend Strategy
-        if trend.get('supertrend'):
-            price = df['close'].iloc[-1]
-            psar = trend.get('supertrend', price)
-            if price > psar:
-                signals.append({
-                    'id': f'{symbol}_SUPERTREND_BUY_{datetime.now().timestamp()}',
-                    'symbol': symbol,
-                    'strategy': 'SUPERTREND_BUY',
-                    'category': 'TREND',
-                    'direction': 'BUY',
-                    'entry_price': price,
-                    'sl_price': price * 0.98,
-                    'tp_price': price * 1.03,
-                    'confidence': 70,
-                    'indicators': trend,
-                    'reason': 'Supertrend bullish signal'
-                })
-        
-        # Ichimoku Strategy
-        if trend.get('tenkan_sen') and trend.get('kijun_sen'):
-            if trend['tenkan_sen'] > trend['kijun_sen'] and trend['chikou_span'] < df['close'].iloc[-1]:
-                signals.append({
-                    'id': f'{symbol}_ICHIMOKU_BUY_{datetime.now().timestamp()}',
-                    'symbol': symbol,
-                    'strategy': 'ICHIMOKU_BUY',
-                    'category': 'TREND',
-                    'direction': 'BUY',
-                    'entry_price': df['close'].iloc[-1],
-                    'sl_price': trend.get('senkou_b', df['close'].iloc[-1] * 0.98),
-                    'tp_price': trend.get('senkou_a', df['close'].iloc[-1] * 1.03),
-                    'confidence': 65,
-                    'indicators': trend,
-                    'reason': 'Ichimoku cloud bullish'
-                })
+        # Add symbol to each signal
+        for sig in signals:
+            sig['symbol'] = symbol
+            sig['regime'] = regime.value
         
         return signals
     
-    # ==================== MEAN REVERSION STRATEGIES ====================
+    def scan_all(self, market_data: Dict[str, Dict[str, pd.DataFrame]]) -> List[Dict]:
+        """Scan all instruments"""
+        all_signals = []
+        
+        for symbol in self.INSTRUMENTS:
+            if symbol in market_data:
+                signals = self.scan_instrument(symbol, market_data[symbol])
+                all_signals.extend(signals)
+        
+        return all_signals
     
-    def _scan_mean_reversion_strategies(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan mean reversion strategies"""
-        signals = []
-        momentum = indicators.get('momentum', {})
-        volatility = indicators.get('volatility', {})
-        
-        # RSI Oversold
-        rsi = momentum.get('rsi_14', 50)
-        if rsi < 30:
-            signals.append({
-                'id': f'{symbol}_RSI_OVERSOLD_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'RSI_OVERSOLD',
-                'category': 'MEAN_REVERSION',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': df['close'].iloc[-1] * 0.98,
-                'tp_price': df['close'].iloc[-1] * 1.02,
-                'confidence': 70,
-                'indicators': momentum,
-                'reason': f'RSI oversold at {rsi}'
-            })
-        
-        # RSI Overbought
-        if rsi > 70:
-            signals.append({
-                'id': f'{symbol}_RSI_OVERBOUGHT_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'RSI_OVERBOUGHT',
-                'category': 'MEAN_REVERSION',
-                'direction': 'SELL',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': df['close'].iloc[-1] * 1.02,
-                'tp_price': df['close'].iloc[-1] * 0.98,
-                'confidence': 70,
-                'indicators': momentum,
-                'reason': f'RSI overbought at {rsi}'
-            })
-        
-        # Bollinger Bands Bounce
-        bb = volatility.get('bb_position', 0.5)
-        if bb < 0.1:
-            signals.append({
-                'id': f'{symbol}_BB_BOUNCE_BUY_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'BB_BOUNCE_BUY',
-                'category': 'MEAN_REVERSION',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': volatility.get('bb_lower'),
-                'tp_price': volatility.get('bb_middle'),
-                'confidence': 65,
-                'indicators': volatility,
-                'reason': 'Price at lower Bollinger Band'
-            })
-        
-        # Stochastic Oversold
-        stoch_k = momentum.get('stoch_k', 50)
-        stoch_d = momentum.get('stoch_d', 50)
-        if stoch_k < 20 and stoch_d < 20:
-            signals.append({
-                'id': f'{symbol}_STOCH_OVERSOLD_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'STOCH_OVERSOLD',
-                'category': 'MEAN_REVERSION',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': df['close'].iloc[-1] * 0.99,
-                'tp_price': df['close'].iloc[-1] * 1.015,
-                'confidence': 60,
-                'indicators': momentum,
-                'reason': f'Stochastic oversold ({stoch_k:.0f})'
-            })
-        
-        return signals
-    
-    # ==================== BREAKOUT STRATEGIES ====================
-    
-    def _scan_breakout_strategies(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan breakout strategies"""
-        signals = []
-        volatility = indicators.get('volatility', {})
-        pattern = indicators.get('pattern', {})
-        
-        # Donchian Breakout Up
-        if volatility.get('dc_upper') and df['close'].iloc[-1] > volatility['dc_upper']:
-            signals.append({
-                'id': f'{symbol}_DC_BREAKOUT_UP_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'DC_BREAKOUT_UP',
-                'category': 'BREAKOUT',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': volatility.get('dc_middle'),
-                'tp_price': volatility.get('dc_upper') * 1.02,
-                'confidence': 75,
-                'indicators': volatility,
-                'reason': 'Donchian channel breakout up'
-            })
-        
-        # Donchian Breakout Down
-        if volatility.get('dc_lower') and df['close'].iloc[-1] < volatility['dc_lower']:
-            signals.append({
-                'id': f'{symbol}_DC_BREAKOUT_DOWN_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'DC_BREAKOUT_DOWN',
-                'category': 'BREAKOUT',
-                'direction': 'SELL',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': volatility.get('dc_middle'),
-                'tp_price': volatility.get('dc_lower') * 0.98,
-                'confidence': 75,
-                'indicators': volatility,
-                'reason': 'Donchian channel breakout down'
-            })
-        
-        # Higher Highs Breakout
-        if pattern.get('higher_highs'):
-            signals.append({
-                'id': f'{symbol}_HH_BREAKOUT_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'HH_BREAKOUT',
-                'category': 'BREAKOUT',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': df['close'].iloc[-1] * 0.98,
-                'tp_price': df['close'].iloc[-1] * 1.025,
-                'confidence': 70,
-                'indicators': pattern,
-                'reason': 'Higher highs pattern'
-            })
-        
-        return signals
-    
-    # ==================== GRID STRATEGIES ====================
-    
-    def _scan_grid_strategies(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan grid strategies - returns neutral signals for grid placement"""
-        signals = []
-        
-        # Range-bound market for grid
-        volatility = indicators.get('volatility', {})
-        bb_width = volatility.get('bb_width', 0)
-        
-        if bb_width < 0.05:  # Low volatility = good for grid
-            mid = volatility.get('bb_middle', df['close'].iloc[-1])
-            lower = volatility.get('bb_lower', mid * 0.99)
-            upper = volatility.get('bb_upper', mid * 1.01)
-            
-            signals.append({
-                'id': f'{symbol}_GRID_RANGE_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'GRID_RANGE',
-                'category': 'GRID',
-                'direction': 'NEUTRAL',
-                'entry_price': mid,
-                'sl_price': lower,
-                'tp_price': upper,
-                'confidence': 60,
-                'indicators': volatility,
-                'reason': f'Grid setup: Lower={lower:.5f}, Upper={upper:.5f}'
-            })
-        
-        return signals
-    
-    # ==================== SCALPING STRATEGIES ====================
-    
-    def _scan_scalping_strategies(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan scalping strategies"""
-        signals = []
-        momentum = indicators.get('momentum', {})
-        volume = indicators.get('volume', {})
-        
-        # AO Zero Line Cross
-        ao = momentum.get('awesome_oscillator', 0)
-        if ao > 0 and ao < momentum.get('awesome_oscillator', 0):
-            signals.append({
-                'id': f'{symbol}_AO_SCALE_BUY_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'AO_SCALE_BUY',
-                'category': 'SCALPING',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': df['close'].iloc[-1] * 0.998,
-                'tp_price': df['close'].iloc[-1] * 1.003,
-                'confidence': 55,
-                'indicators': momentum,
-                'reason': 'AO bullish cross for scalping'
-            })
-        
-        # Volume Spike
-        vol_ratio = volume.get('volume_ratio', 1)
-        if vol_ratio > 2:
-            signals.append({
-                'id': f'{symbol}_VOLUME_SPIKE_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'VOLUME_SPIKE',
-                'category': 'SCALPING',
-                'direction': 'BUY' if df['close'].iloc[-1] > df['close'].iloc[-2] else 'SELL',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': df['close'].iloc[-1] * 0.999,
-                'tp_price': df['close'].iloc[-1] * 1.002,
-                'confidence': 50,
-                'indicators': volume,
-                'reason': f'Volume spike ({vol_ratio:.1f}x average)'
-            })
-        
-        return signals
-    
-    # ==================== CUSTOM/AI STRATEGIES ====================
-    
-    def _scan_custom_strategies(self, symbol: str, df: pd.DataFrame, indicators: Dict) -> List[Dict]:
-        """Scan custom/AI strategies"""
-        signals = []
-        
-        # Multi-factor confluence
-        trend = indicators.get('trend', {})
-        momentum = indicators.get('momentum', {})
-        volatility = indicators.get('volatility', {})
-        
-        # Confluence BUY: EMA aligned + RSI not overbought + not at resistance
-        rsi = momentum.get('rsi_14', 50)
-        near_resistance = pattern = indicators.get('pattern', {})
-        near_r = near_resistance.get('near_resistance', False)
-        
-        if (trend.get('ema_9_above_21') == 1 and 
-            30 < rsi < 70 and 
-            not near_r):
-            signals.append({
-                'id': f'{symbol}_CONFLUENCE_BUY_{datetime.now().timestamp()}',
-                'symbol': symbol,
-                'strategy': 'CONFLUENCE_BUY',
-                'category': 'CUSTOM',
-                'direction': 'BUY',
-                'entry_price': df['close'].iloc[-1],
-                'sl_price': trend.get('sma_50', df['close'].iloc[-1] * 0.99),
-                'tp_price': df['close'].iloc[-1] * 1.02,
-                'confidence': 80,
-                'indicators': indicators,
-                'reason': 'Multi-factor confluence BUY'
-            })
-        
-        return signals
-    
-    def get_available_strategies(self) -> List[Dict[str, Any]]:
-        """Get list of all available strategies"""
-        return [
-            # Trend
-            {'id': 'EMA_CROSSUP', 'name': 'EMA Crossover Up', 'category': 'TREND', 'description': 'EMA 9/21 bullish crossover'},
-            {'id': 'EMA_CROSSDOWN', 'name': 'EMA Crossover Down', 'category': 'TREND', 'description': 'EMA 9/21 bearish crossover'},
-            {'id': 'SUPERTREND_BUY', 'name': 'Supertrend Buy', 'category': 'TREND', 'description': 'Supertrend bullish signal'},
-            {'id': 'ICHIMOKU_BUY', 'name': 'Ichimoku Buy', 'category': 'TREND', 'description': 'Ichimoku cloud bullish'},
-            
-            # Mean Reversion
-            {'id': 'RSI_OVERSOLD', 'name': 'RSI Oversold', 'category': 'MEAN_REVERSION', 'description': 'RSI below 30'},
-            {'id': 'RSI_OVERBOUGHT', 'name': 'RSI Overbought', 'category': 'MEAN_REVERSION', 'description': 'RSI above 70'},
-            {'id': 'BB_BOUNCE_BUY', 'name': 'BB Bounce Buy', 'category': 'MEAN_REVERSION', 'description': 'Price at lower BB'},
-            {'id': 'STOCH_OVERSOLD', 'name': 'Stochastic Oversold', 'category': 'MEAN_REVERSION', 'description': 'Stochastic below 20'},
-            
-            # Breakout
-            {'id': 'DC_BREAKOUT_UP', 'name': 'Donchian Breakout Up', 'category': 'BREAKOUT', 'description': 'Break above DC upper'},
-            {'id': 'DC_BREAKOUT_DOWN', 'name': 'Donchian Breakout Down', 'category': 'BREAKOUT', 'description': 'Break below DC lower'},
-            {'id': 'HH_BREAKOUT', 'name': 'Higher Highs', 'category': 'BREAKOUT', 'description': 'Higher highs pattern'},
-            
-            # Grid
-            {'id': 'GRID_RANGE', 'name': 'Grid Range', 'category': 'GRID', 'description': 'Range-bound for grid'},
-            
-            # Scalping
-            {'id': 'AO_SCALE_BUY', 'name': 'AO Scalp Buy', 'category': 'SCALPING', 'description': 'AO zero cross'},
-            {'id': 'VOLUME_SPIKE', 'name': 'Volume Spike', 'category': 'SCALPING', 'description': 'Volume spike entry'},
-            
-            # Custom
-            {'id': 'CONFLUENCE_BUY', 'name': 'Confluence Buy', 'category': 'CUSTOM', 'description': 'Multi-factor confluence'}
-        ]
+    def get_regime(self, df: pd.DataFrame) -> MarketRegime:
+        """Get market regime for any dataframe"""
+        return self.regime_detector.detect(df)
 
 
-# Global instance
 strategy_engine = StrategyEngine()
 
 
 def get_strategy_engine() -> StrategyEngine:
-    """Get global strategy engine instance"""
     return strategy_engine

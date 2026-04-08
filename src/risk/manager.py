@@ -1,218 +1,257 @@
 """
-APEX FX Trading Bot - Risk Management
-Position sizing, drawdown limits, max positions, correlation limits
+APEX FX Trading Bot - Per-Instrument Risk Management
+Section 5: Risk Management Framework
+Each instrument has bespoke risk parameters per PRD specification
 """
 
-import MetaTrader5 as mt5
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-import json
-from pathlib import Path
+
+
+class InstrumentRiskProfile:
+    """Risk profile for a single instrument"""
+    
+    def __init__(self, symbol: str, params: Dict):
+        self.symbol = symbol
+        self.risk_per_trade_pct = params.get('risk_per_trade', 1.0)
+        self.atr_multiplier = params.get('atr_multiplier', 1.5)
+        self.max_daily_loss_pct = params.get('max_daily_loss', 3.0)
+        self.max_drawdown_pct = params.get('max_drawdown', 8.0)
+        self.max_lot = params.get('max_lot', 2.0)
+        self.max_positions = params.get('max_positions', 2)
+        self.sl_method = params.get('sl_method', 'atr')
+        self.tp_method = params.get('tp_method', 'atr')
+        self.tp_multiplier = params.get('tp_multiplier', 2.5)
+        self.trailing_activation_rr = params.get('trailing_activation_rr', 1.0)
+        self.trailing_atr_multiplier = params.get('trailing_atr_multiplier', 1.0)
+
+
+# PRD Section 5.3 - Per-Instrument Risk Parameters
+INSTRUMENT_PROFILES = {
+    'EURUSD': {
+        'risk_per_trade': 1.5,
+        'atr_multiplier': 1.5,
+        'max_daily_loss': 3.0,
+        'max_drawdown': 8.0,
+        'max_lot': 2.0,
+        'max_positions': 2,
+        'sl_method': 'atr',
+        'tp_method': 'atr',
+        'tp_multiplier': 2.5,
+        'trailing_activation_rr': 1.0,
+        'trailing_atr_multiplier': 1.0
+    },
+    'GBPUSD': {
+        'risk_per_trade': 1.2,
+        'atr_multiplier': 1.8,
+        'max_daily_loss': 3.0,
+        'max_drawdown': 8.0,
+        'max_lot': 2.0,
+        'max_positions': 2,
+        'sl_method': 'atr',
+        'tp_method': 'atr',
+        'tp_multiplier': 3.0,
+        'trailing_activation_rr': 1.5,
+        'trailing_atr_multiplier': 1.2
+    },
+    'USDJPY': {
+        'risk_per_trade': 1.5,
+        'atr_multiplier': 1.5,
+        'max_daily_loss': 3.0,
+        'max_drawdown': 8.0,
+        'max_lot': 1.5,
+        'max_positions': 2,
+        'sl_method': 'atr',
+        'tp_method': 'atr',
+        'tp_multiplier': 2.5,
+        'trailing_activation_rr': 1.0,
+        'trailing_atr_multiplier': 1.0
+    },
+    'USDCHF': {
+        'risk_per_trade': 1.0,
+        'atr_multiplier': 1.5,
+        'max_daily_loss': 2.5,
+        'max_drawdown': 7.0,
+        'max_lot': 1.5,
+        'max_positions': 1,
+        'sl_method': 'atr',
+        'tp_method': 'atr',
+        'tp_multiplier': 2.0,
+        'trailing_activation_rr': 1.0,
+        'trailing_atr_multiplier': 1.0
+    },
+    'USDCAD': {
+        'risk_per_trade': 1.2,
+        'atr_multiplier': 1.5,
+        'max_daily_loss': 3.0,
+        'max_drawdown': 8.0,
+        'max_lot': 1.5,
+        'max_positions': 2,
+        'sl_method': 'atr',
+        'tp_method': 'atr',
+        'tp_multiplier': 2.5,
+        'trailing_activation_rr': 0.8,
+        'trailing_atr_multiplier': 0.8
+    },
+    'XAUUSD': {
+        'risk_per_trade': 0.75,
+        'atr_multiplier': 2.0,
+        'max_daily_loss': 2.0,
+        'max_drawdown': 6.0,
+        'max_lot': 0.5,
+        'max_positions': 1,
+        'sl_method': 'atr',
+        'tp_method': 'atr',
+        'tp_multiplier': 3.5,
+        'trailing_activation_rr': 1.0,
+        'trailing_atr_multiplier': 1.0
+    }
+}
 
 
 class RiskManager:
-    """Risk management system"""
+    """
+    APEX FX Risk Management Engine
+    Section 5: Risk Management Framework
     
-    def __init__(self, config: Dict = None):
-        self.config = config or {}
+    Key Features:
+    - Per-instrument risk profiles (not one-size-fits-all)
+    - ATR-based position sizing and stop-loss
+    - Portfolio-level correlation controls
+    - Circuit breakers (daily drawdown, consecutive losses)
+    """
+    
+    def __init__(self):
+        self.instrument_profiles = {
+            symbol: InstrumentRiskProfile(symbol, params)
+            for symbol, params in INSTRUMENT_PROFILES.items()
+        }
         
-        # Risk Parameters (from config)
-        self.max_risk_per_trade = self.config.get('max_risk_per_trade', 1.0)  # % of account
-        self.max_daily_loss = self.config.get('max_daily_loss', 2.0)  # % of account
-        self.max_concurrent_positions = self.config.get('max_concurrent_positions', 3)
-        self.max_correlation = self.config.get('max_correlation', 0.7)  # Max correlation between positions
-        
-        # Account tracking
-        self.daily_start_balance = 0
-        self.daily_trades = []
-        self.peak_equity = 0
+        self.max_consecutive_losses = 5
         self.consecutive_losses = 0
+        self.daily_start_balance = 0
+        self.daily_pnl = 0
+        self.pair_daily_losses = {}
         
-        # Circuit breaker
+        self.daily_account_loss_limit = 8.0
+        self.monthly_drawdown_limit = 15.0
         self.circuit_breaker_active = False
         self.circuit_breaker_until = None
-        
-    def check_trade_allowed(self, account_balance: float, open_positions: List[Dict]) -> tuple[bool, str]:
-        """Check if new trade is allowed"""
-        
-        # Check circuit breaker
-        if self.circuit_breaker_active:
-            if datetime.now() < self.circuit_breaker_until:
-                return False, f"Circuit breaker active until {self.circuit_breaker_until.strftime('%H:%M')}"
-            else:
-                self.circuit_breaker_active = False
-                self.consecutive_losses = 0
-        
-        # Check max positions
-        if len(open_positions) >= self.max_concurrent_positions:
-            return False, f"Max {self.max_concurrent_positions} positions reached"
-        
-        # Check daily loss limit
-        if self.daily_start_balance > 0:
-            daily_loss_pct = ((self.daily_start_balance - account_balance) / self.daily_start_balance) * 100
-            if daily_loss_pct >= self.max_daily_loss:
-                self._trigger_circuit_breaker(24)
-                return False, f"Daily loss limit {self.max_daily_loss}% reached"
-        
-        # Check margin
-        acc = mt5.account_info()
-        if acc and acc.margin_level < 150:
-            return False, f"Margin level low ({acc.margin_level:.0f}%)"
-        
-        if acc and acc.margin_free < 50:
-            return False, f"Low free margin (${acc.margin_free:.2f})"
-        
-        return True, "OK"
+    
+    def get_profile(self, symbol: str) -> InstrumentRiskProfile:
+        symbol = symbol.upper().replace('/', '')
+        return self.instrument_profiles.get(symbol, self.instrument_profiles['EURUSD'])
     
     def calculate_position_size(self, symbol: str, account_balance: float, 
-                                entry_price: float, sl_price: float) -> float:
-        """Calculate position size based on risk"""
+                                current_price: float, sl_price: float) -> float:
+        """Section 5.2 Position Sizing Formula"""
+        profile = self.get_profile(symbol)
+        atr = self._get_atr(symbol)
+        sl_distance = abs(current_price - sl_price)
         
-        # Get symbol info
-        symbol_info = mt5.symbol_info(symbol)
-        if not symbol_info:
-            return 0.01
-        
-        # Calculate pip value
-        point = symbol_info.point
-        digits = symbol_info.digits
-        
-        # SL distance in price
-        sl_distance = abs(entry_price - sl_price)
-        
-        # Convert to pips
-        if 'JPY' in symbol:
-            sl_pips = sl_distance * 100  # JPY pairs
+        if 'XAU' in symbol:
+            pip_value = 100
+            sl_pips = sl_distance * 10000
+        elif 'JPY' in symbol:
+            pip_value = 1000
+            sl_pips = sl_distance * 100
         else:
-            sl_pips = sl_distance / point / 10  # Other pairs
+            pip_value = 10
+            sl_pips = sl_distance / current_price * 10000
         
         if sl_pips <= 0:
-            sl_pips = 100  # Default to 100 pips if calculation fails
+            sl_pips = 50
         
-        # Risk amount in dollars
-        risk_amount = account_balance * (self.max_risk_per_trade / 100)
-        
-        # Pip value per lot
-        if 'XAU' in symbol:
-            pip_value = 100  # $100 per pip for gold
-        elif 'JPY' in symbol:
-            pip_value = 1000  # JPY pairs
-        else:
-            pip_value = 10  # Standard Forex
-        
-        # Calculate lot size
-        lot_size = risk_amount / (sl_pips * pip_value)
-        
-        # Apply limits
-        min_lot = symbol_info.volume_min
-        max_lot = symbol_info.volume_max
-        
-        lot_size = max(min_lot, min(max_lot, lot_size))
+        risk_amount = account_balance * (profile.risk_per_trade_pct / 100)
+        lot_size = risk_amount / (sl_pips * profile.atr_multiplier * pip_value / 100)
+        lot_size = max(0.01, min(profile.max_lot, lot_size))
         
         return round(lot_size, 2)
     
-    def calculate_risk_reward(self, entry: float, sl: float, tp: float, direction: str) -> float:
-        """Calculate risk-reward ratio"""
+    def _get_atr(self, symbol: str) -> float:
+        default_atrs = {
+            'EURUSD': 0.0008, 'GBPUSD': 0.0010, 'USDJPY': 0.80,
+            'USDCHF': 0.0007, 'USDCAD': 0.0008, 'XAUUSD': 15.0
+        }
+        return default_atrs.get(symbol, 0.001)
+    
+    def calculate_stop_loss(self, symbol: str, entry_price: float, direction: str) -> float:
+        """Section 5.4 - Stop-Loss Method"""
+        profile = self.get_profile(symbol)
+        atr = self._get_atr(symbol)
         
         if direction.upper() == 'BUY':
-            risk = entry - sl
-            reward = tp - entry
+            sl = entry_price - (atr * profile.atr_multiplier)
+            if 'JPY' in symbol:
+                sl -= 0.10
         else:
-            risk = sl - entry
-            reward = entry - tp
+            sl = entry_price + (atr * profile.atr_multiplier)
+            if 'JPY' in symbol:
+                sl += 0.10
         
-        if risk <= 0:
-            return 0
-            
-        return round(reward / risk, 2)
+        return round(sl, 5)
     
-    def validate_stop_loss(self, entry: float, sl: float, direction: str) -> tuple[bool, str]:
-        """Validate stop loss"""
+    def calculate_take_profit(self, symbol: str, entry_price: float, direction: str) -> float:
+        """Section 5.4 - Take-Profit Method"""
+        profile = self.get_profile(symbol)
+        atr = self._get_atr(symbol)
+        tp_distance = atr * profile.tp_multiplier
         
-        if sl <= 0:
-            return False, "Invalid SL price"
+        if direction.upper() == 'BUY':
+            tp = entry_price + tp_distance
+        else:
+            tp = entry_price - tp_distance
         
-        # Minimum distance (based on symbol)
-        # This would be symbol-specific in production
+        return round(tp, 5)
+    
+    def check_trade_allowed(self, symbol: str, direction: str, 
+                           open_positions: List[Dict], account_balance: float) -> tuple[bool, str]:
+        """Section 5.5 - Portfolio-Level Risk Controls"""
+        
+        if self.circuit_breaker_active:
+            if datetime.now() < self.circuit_breaker_until:
+                return False, f"Circuit breaker active until {self.circuit_breaker_until}"
+            self.circuit_breaker_active = False
+        
+        if self.daily_start_balance > 0:
+            daily_loss_pct = ((self.daily_start_balance - account_balance) / self.daily_start_balance) * 100
+            if daily_loss_pct >= self.daily_account_loss_limit:
+                self._trigger_circuit_breaker(24)
+                return False, f"Daily loss {daily_loss_pct:.1f}% exceeds {self.daily_account_loss_limit}%"
+        
+        pair_loss = self.pair_daily_losses.get(symbol, 0)
+        profile = self.get_profile(symbol)
+        if pair_loss >= profile.max_daily_loss_pct:
+            return False, f"{symbol} daily loss limit reached"
+        
+        symbol_positions = [p for p in open_positions if p.get('symbol') == symbol]
+        if len(symbol_positions) >= profile.max_positions:
+            return False, f"Max positions for {symbol} reached"
         
         return True, "OK"
     
-    def check_correlation(self, positions: List[Dict], new_symbol: str) -> tuple[bool, str]:
-        """Check correlation with existing positions"""
-        
-        # Define correlation groups
-        correlations = {
-            'EURUSD': ['GBPUSD', 'USDCHF', 'AUDUSD'],
-            'GBPUSD': ['EURUSD', 'USDCHF'],
-            'USDJPY': ['USDCHF', 'USDCAD'],
-            'XAUUSD': ['XAGUSD'],
-        }
-        
-        new_corrs = correlations.get(new_symbol, [])
-        
-        for pos in positions:
-            if pos.get('symbol') in new_corrs:
-                return False, f"Correlation conflict with {pos['symbol']}"
-        
-        return True, "OK"
-    
-    def update_consecutive_losses(self, profit: float):
-        """Update consecutive losses counter"""
+    def update_after_trade(self, symbol: str, profit: float):
         if profit < 0:
             self.consecutive_losses += 1
-            if self.consecutive_losses >= 3:
-                self._trigger_circuit_breaker(4)
+            self.pair_daily_losses[symbol] = self.pair_daily_losses.get(symbol, 0) + abs(profit)
+            if self.consecutive_losses >= self.max_consecutive_losses:
+                self._trigger_circuit_breaker(24)
         else:
             self.consecutive_losses = 0
     
     def _trigger_circuit_breaker(self, hours: int):
-        """Trigger circuit breaker"""
         self.circuit_breaker_active = True
         self.circuit_breaker_until = datetime.now() + timedelta(hours=hours)
         print(f"⚠️ CIRCUIT BREAKER TRIGGERED! Paused for {hours} hours")
     
-    def start_daily_tracking(self, balance: float):
-        """Initialize daily tracking"""
-        if self.daily_start_balance == 0:
-            self.daily_start_balance = balance
-            self.daily_trades = []
-    
-    def get_risk_metrics(self, account_balance: float, open_positions: List[Dict]) -> Dict[str, Any]:
-        """Get current risk metrics"""
-        
-        current_equity = account_balance
-        
-        # Daily loss
-        daily_loss_pct = 0
-        if self.daily_start_balance > 0:
-            daily_loss_pct = ((self.daily_start_balance - current_equity) / self.daily_start_balance) * 100
-        
-        # Drawdown
-        drawdown_pct = 0
-        if self.peak_equity > 0:
-            drawdown_pct = ((self.peak_equity - current_equity) / self.peak_equity) * 100
-        
-        # Exposure
-        total_exposure = sum(p.get('volume', 0) * p.get('current', 0) for p in open_positions)
-        exposure_pct = (total_exposure / account_balance * 100) if account_balance > 0 else 0
-        
-        return {
-            'daily_loss_pct': round(daily_loss_pct, 2),
-            'drawdown_pct': round(drawdown_pct, 2),
-            'exposure_pct': round(exposure_pct, 2),
-            'positions_count': len(open_positions),
-            'max_positions': self.max_concurrent_positions,
-            'consecutive_losses': self.consecutive_losses,
-            'circuit_breaker_active': self.circuit_breaker_active,
-            'risk_per_trade_pct': self.max_risk_per_trade,
-            'daily_loss_limit_pct': self.max_daily_loss
-        }
+    def reset_daily(self, balance: float):
+        self.daily_start_balance = balance
+        self.daily_pnl = 0
+        self.pair_daily_losses = {}
 
 
-# Global instance
 risk_manager = RiskManager()
 
 
 def get_risk_manager() -> RiskManager:
-    """Get global risk manager instance"""
     return risk_manager
