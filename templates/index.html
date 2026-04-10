@@ -675,13 +675,24 @@
         let eventLog = [];
         
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadConfig();
-            await loadWatchlist();
-            await loadDashboardData();
-            initChart();
-            startSSE();
-            setInterval(updateClocks, 1000);
-            setInterval(refreshData, 5000);
+            console.log('Page loaded, initializing...');
+            try {
+                await loadConfig();
+                console.log('Config loaded');
+                await loadWatchlist();
+                console.log('Watchlist loaded');
+                await loadDashboardData();
+                console.log('Dashboard data loaded');
+                initChart();
+                console.log('Chart initialized');
+                startSSE();
+                console.log('SSE started');
+                setInterval(updateClocks, 1000);
+                setInterval(refreshData, 5000);
+                console.log('Intervals set - initialization complete');
+            } catch(e) {
+                console.error('Initialization error:', e);
+            }
         });
         
         async function loadConfig() {
@@ -726,9 +737,15 @@
         
         async function loadAccount() {
             try {
+                console.log('Loading account...');
                 const res = await fetch('/api/account');
+                if (!res.ok) {
+                    throw new Error('HTTP ' + res.status);
+                }
                 const data = await res.json();
+                console.log('Account data:', data);
                 const connected = data.connected !== false;
+                console.log('Connected:', connected);
                 document.getElementById('mt5Dot').className = `status-dot ${connected ? 'connected' : 'disconnected'}`;
                 document.getElementById('mt5Status').textContent = connected ? 'Connected' : 'Disconnected';
                 if (connected) {
@@ -739,7 +756,11 @@
                     pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
                     pnlEl.className = `pnl-value ${pnl >= 0 ? 'positive' : 'negative'}`;
                 }
-            } catch(e) { console.error(e); }
+            } catch(e) { 
+                console.error('loadAccount error:', e); 
+                document.getElementById('mt5Status').textContent = 'Error: ' + e.message;
+                document.getElementById('mt5Dot').className = 'status-dot disconnected';
+            }
         }
         
         async function loadKPIs() {
