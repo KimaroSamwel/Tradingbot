@@ -4,7 +4,7 @@
 system:
   name: "APEX FX Trading Bot"
   version: "1.0.0"
-  mode: "DEMO"  # DEMO, LIVE
+  mode: "PAPER"  # PAPER, DEMO, LIVE
 
 # Data Sources (per PRD)
 data_sources:

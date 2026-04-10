@@ -23,8 +23,8 @@ Thumbs.db
 # Logs
 *.log
 
-# Data/Models
-data/
+# Data/Models (not src/data)
+# data/
 models/
 *.h5
 *.pkl
@@ -40,3 +40,11 @@ trades.csv
 
 # Database (local only)
 *.db
+
+# Test files (local only)
+test_*.py
+debug_*.py
+clean_*.py
+check_*.py
+simple_*.py
+run_*.ps1

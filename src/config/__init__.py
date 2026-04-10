@@ -40,6 +40,9 @@ class ConfigManager:
         # Watchlist
         self._config['watchlist'] = self._load_yaml('watchlist.yaml')
         
+        # Paper trading config
+        self._config['paper'] = self._load_yaml('paper_config.yaml')
+        
     def _load_yaml(self, filename: str) -> Dict[str, Any]:
         """Load YAML configuration"""
         path = self.config_dir / filename
@@ -74,6 +77,29 @@ class ConfigManager:
             else:
                 return default
         return value
+    
+    def set(self, key: str, value: Any) -> None:
+        """Set config value by key"""
+        keys = key.split('.')
+        target = self._config
+        for k in keys[:-1]:
+            if k not in target:
+                target[k] = {}
+            target = target[k]
+        target[keys[-1]] = value
+        
+        # Update the YAML file if it's a top-level key
+        if keys[0] == 'trading':
+            self._save_yaml('config.yaml')
+    
+    def _save_yaml(self, filename: str) -> None:
+        """Save YAML configuration"""
+        path = self.config_dir / filename
+        try:
+            with open(path, 'w') as f:
+                yaml.safe_dump(self._config.get('main', {}), f, default_flow_style=False)
+        except Exception as e:
+            print(f"Error saving {filename}: {e}")
     
     def get_all(self) -> Dict[str, Any]:
         """Get all configuration"""

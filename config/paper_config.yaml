@@ -1,0 +1,49 @@
+# Paper Trading Configuration
+# PRD Volume III Section 5.2
+
+paper:
+  # Starting virtual balance
+  starting_balance: 10000.0
+  
+  # Leverage for margin calculation (default 1:100)
+  leverage: 100
+  
+  # Replay speed for offline mode (1-1000x)
+  replay_speed: 1
+  
+  # Offline mode - use historical data when MT5 unavailable
+  offline_mode: false
+  
+  # Historical data source (CSV file path for offline mode)
+  historical_data_path: null
+
+# Per-symbol slippage simulation (pips)
+slippage:
+  XAUUSD: 0.5
+  EURUSD: 0.2
+  GBPUSD: 0.3
+  USDJPY: 0.3
+  USDCHF: 0.3
+  USDCAD: 0.3
+  AUDUSD: 0.3
+
+# Commission per lot (USD)
+commission_per_lot: 7.0
+
+# Spread simulation (price units)
+spread:
+  XAUUSD: 0.30    # 30 cents
+  EURUSD: 0.00015  # 1.5 pips
+  GBPUSD: 0.00020  # 2 pips
+  USDJPY: 0.015   # 1.5 pips
+  USDCHF: 0.00020
+  USDCAD: 0.00020
+  AUDUSD: 0.00025
+
+# Risk management (same as live)
+risk:
+  max_positions: 3
+  max_portfolio_heat: 4.0  # percentage
+  min_signal_score: 60
+  max_daily_loss_pct: 2.0
+  max_drawdown_pct: 10.0

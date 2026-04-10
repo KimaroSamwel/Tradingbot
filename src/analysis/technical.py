@@ -484,3 +484,10 @@ ta = TechnicalAnalysis()
 def get_ta() -> TechnicalAnalysis:
     """Get global TA instance"""
     return ta
+
+
+def get_atr_value(df: pd.DataFrame, period: int = 14) -> float:
+    """Get ATR value for a dataframe - wrapper for external calls"""
+    if df is None or df.empty or 'high' not in df.columns:
+        return 0.0
+    return ta._atr(df['high'], df['low'], df['close'], period)

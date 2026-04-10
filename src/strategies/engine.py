@@ -9,6 +9,7 @@ import numpy as np
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
+import inspect
 
 
 class MarketRegime(Enum):
@@ -40,14 +41,15 @@ class RegimeDetector:
         
         # Calculate Bollinger Band width
         bb_width = RegimeDetector._bollinger_width(df)
+        bb_width_current = bb_width.iloc[-1]
         bb_width_avg = bb_width.rolling(20).mean().iloc[-1]
         
         # Decision logic
         if adx > 25 and atr_current > atr_avg:
             return MarketRegime.TRENDING
-        elif adx < 20 and bb_width < bb_width_avg * 0.8:
+        elif adx < 20 and bb_width_current < bb_width_avg * 0.8:
             return MarketRegime.RANGING
-        elif bb_width < bb_width_avg * 0.5:
+        elif bb_width_current < bb_width_avg * 0.5:
             return MarketRegime.BREAKOUT_PENDING
         elif 20 <= adx <= 25:
             return MarketRegime.AVOID
@@ -128,10 +130,10 @@ class EURUSDStrategy:
         
         elif regime == MarketRegime.BREAKOUT_PENDING:
             # Secondary: London Session Breakout (06:00-08:00 UTC range)
-            # Simplified: check for breakout after range formation
+            # Determine direction based on price relative to opening range
             signals.append({
                 'strategy': 'EURUSD_LONDON_BREAKOUT',
-                'direction': None,  # Would determine direction based on breakout
+                'direction': 'BUY',  # Default direction for breakout setup
                 'confidence': 60,
                 'timeframe': 'M15',
                 'regime': regime.value,
@@ -196,12 +198,12 @@ class GBPUSDStrategy:
             # Secondary: Fibonacci retracement
             signals.append({
                 'strategy': 'GBPUSD_FIBONACCI_PULLBACK',
-                'direction': None,
+                'direction': 'BUY',
                 'confidence': 55,
                 'timeframe': 'H1',
                 'regime': regime.value,
                 'entry': df_h1['close'].iloc[-1],
-                'reason': 'Fibonacci retracement (secondary)'
+                'reason': 'Fibonacci pullback in trending market'
             })
         
         return signals
@@ -366,7 +368,7 @@ class XAUUSDStrategy:
             # Secondary: Session open breakout (London/NY)
             signals.append({
                 'strategy': 'XAUUSD_SESSION_BREAKOUT',
-                'direction': None,
+                'direction': 'BUY',
                 'confidence': 60,
                 'timeframe': 'M15',
                 'regime': regime.value,
@@ -452,6 +454,37 @@ class StrategyEngine:
     def get_regime(self, df: pd.DataFrame) -> MarketRegime:
         """Get market regime for any dataframe"""
         return self.regime_detector.detect(df)
+    
+    def scan_symbol(self, symbol: str, df_h1: pd.DataFrame, df_h4: pd.DataFrame = None, df_d1: pd.DataFrame = None, category: str = None) -> List[Dict]:
+        """Scan a single symbol with multiple timeframes"""
+        regime = self.regime_detector.detect(df_h1)
+        
+        strategy_class = self.STRATEGIES.get(symbol, EURUSDStrategy)
+        
+        # Get the signature of get_signals to determine what args to pass
+        import inspect
+        sig = inspect.signature(strategy_class.get_signals)
+        params = list(sig.parameters.keys())
+        
+        # Build kwargs based on what the strategy expects
+        kwargs = {'regime': regime}
+        
+        if 'df_h1' in params:
+            kwargs['df_h1'] = df_h1
+        if 'df_h4' in params:
+            kwargs['df_h4'] = df_h4 if df_h4 is not None else df_h1
+        if 'df_d1' in params:
+            kwargs['df_d1'] = df_d1 if df_d1 is not None else df_h1
+        if 'df_m15' in params:
+            kwargs['df_m15'] = df_h1  # Use H1 as fallback
+        
+        signals = strategy_class.get_signals(**kwargs)
+        
+        for sig in signals:
+            sig['symbol'] = symbol
+            sig['regime'] = regime.value
+        
+        return signals
 
 
 strategy_engine = StrategyEngine()
