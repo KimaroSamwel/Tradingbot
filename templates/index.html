@@ -492,13 +492,31 @@
             </div>
             
             <div class="backtest-panel">
-                <div class="backtest-title">Historical Backtest</div>
+                <div class="backtest-title">Historical Backtest (Paper Mode)</div>
                 <div class="backtest-inputs">
-                    <input type="date" id="backtestStart" placeholder="Start Date" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);padding:5px;border-radius:4px;">
-                    <input type="date" id="backtestEnd" placeholder="End Date" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);padding:5px;border-radius:4px;">
+                    <input type="date" id="backtestStart" placeholder="Start Date" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);padding:5px;border-radius:4px;width:100%;">
+                    <input type="date" id="backtestEnd" placeholder="End Date" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);padding:5px;border-radius:4px;width:100%;">
                 </div>
-                <button class="btn-control btn-backtest" onclick="runBacktest()" style="width:100%;margin-top:5px;">Run Backtest</button>
+                <div style="margin-top:8px;">
+                    <label style="font-size:11px;color:var(--text-secondary);">Pairs to test:</label>
+                    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;">
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                            <input type="checkbox" id="btEURUSD" checked> EURUSD
+                        </label>
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                            <input type="checkbox" id="btGBPUSD" checked> GBPUSD
+                        </label>
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                            <input type="checkbox" id="btXAUUSD" checked> XAUUSD
+                        </label>
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">
+                            <input type="checkbox" id="btUSDJPY" checked> USDJPY
+                        </label>
+                    </div>
+                </div>
+                <button class="btn-control btn-backtest" onclick="runBacktest()" style="width:100%;margin-top:10px;">Run Historical Backtest</button>
                 <div class="backtest-status" id="backtestStatus" style="font-size:11px;color:var(--text-secondary);margin-top:5px;"></div>
+                <div class="backtest-results" id="backtestResults" style="display:none;margin-top:10px;padding:10px;background:var(--bg-secondary);border-radius:4px;font-size:11px;"></div>
             </div>
         </div>
 
@@ -995,8 +1013,32 @@
                 return;
             }
             
+            // Get selected pairs
+            const pairs = [];
+            if (document.getElementById('btEURUSD').checked) pairs.push('EURUSD');
+            if (document.getElementById('btGBPUSD').checked) pairs.push('GBPUSD');
+            if (document.getElementById('btXAUUSD').checked) pairs.push('XAUUSD');
+            if (document.getElementById('btUSDJPY').checked) pairs.push('USDJPY');
+            
+            if (pairs.length === 0) {
+                showToast('Please select at least one pair', 'error');
+                return;
+            }
+            
             const status = document.getElementById('backtestStatus');
-            status.textContent = 'Running backtest...';
+            const resultsDiv = document.getElementById('backtestResults');
+            status.textContent = 'Running historical backtest...';
+            resultsDiv.style.display = 'none';
+            
+            // First switch to PAPER mode
+            try {
+                await fetch('/api/v3/mode', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({mode: 'PAPER'})
+                });
+                await loadConfig();
+            } catch(e) {}
             
             try {
                 const res = await fetch('/api/backtest', {
@@ -1004,7 +1046,8 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         start_date: startDate,
-                        end_date: endDate
+                        end_date: endDate,
+                        pairs: pairs
                     })
                 });
                 const data = await res.json();
@@ -1012,12 +1055,83 @@
                 if (data.error) {
                     status.textContent = 'Error: ' + data.error;
                 } else {
-                    status.textContent = `Completed: ${data.results?.length || 0} symbols tested`;
+                    // Display results
+                    const stats = data.stats || {};
+                    const totalTrades = stats.total_trades || 0;
+                    const totalPnL = stats.total_pnl || 0;
+                    const winRate = stats.win_rate || 0;
+                    
+                    status.textContent = `Completed!`;
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.innerHTML = `
+                        <div style="font-weight:bold;margin-bottom:8px;">Backtest Results</div>
+                        <div>Total Trades: <span style="color:var(--accent);font-weight:bold;">${totalTrades}</span></div>
+                        <div>Total P&L: <span style="color:${totalPnL >= 0 ? '#4ade80' : '#f87171'};font-weight:bold;">$${totalPnL.toFixed(2)}</span></div>
+                        <div>Win Rate: <span style="color:var(--accent);font-weight:bold;">${winRate.toFixed(1)}%</span></div>
+                        <div style="margin-top:8px;font-size:10px;color:var(--text-secondary);">
+                            Testing period: ${startDate} to ${endDate}
+                        </div>
+                    `;
+                    
+                    // Reload positions to show trades
                     loadPositions();
                     loadKPIs();
+                    loadStats();
+                    
+                    // Load chart for first pair
+                    if (pairs.length > 0) {
+                        const symbol = pairs[0];
+                        const symbolEl = document.getElementById('symbolSelect');
+                        if (symbolEl) {
+                            symbolEl.value = symbol;
+                            loadChart(symbol, currentTimeframe);
+                        }
+                    }
+                    
+                    // Add trade markers to chart
+                    loadBacktestTrades();
+                    
+                    showToast(`Backtest complete: ${totalTrades} trades, P&L: $${totalPnL.toFixed(2)}`, totalPnL >= 0 ? 'success' : 'warning');
                 }
             } catch(e) { 
                 status.textContent = 'Error: ' + e.message;
+            }
+        }
+        
+        async function loadBacktestTrades() {
+            try {
+                const res = await fetch('/api/positions');
+                const data = await res.json();
+                const positions = data.positions || [];
+                
+                // Add markers to chart for each trade
+                if (positions.length > 0 && window.chartInstance) {
+                    window.chartInstance.removeSeries('trades');
+                    
+                    const tradeData = [];
+                    positions.forEach(p => {
+                        if (p.open_time) {
+                            const openTime = new Date(p.open_time).getTime() / 1000;
+                            tradeData.push({
+                                time: openTime,
+                                color: p.direction === 'BUY' ? 'green' : 'red',
+                                arrow: p.direction === 'BUY' ? 'up' : 'down',
+                                text: `${p.direction} @ ${p.open_price?.toFixed(5) || ''}`,
+                                size: 10
+                            });
+                        }
+                    });
+                    
+                    if (tradeData.length > 0) {
+                        window.chartInstance.addSeries('trades', {
+                            color: 'rgba(0,0,0,0)',
+                            priceLabels: false
+                        });
+                        window.chartInstance.setData('trades', tradeData);
+                    }
+                }
+            } catch(e) {
+                console.error('Error loading backtest trades:', e);
             }
         }
         
@@ -1053,6 +1167,15 @@
             const currentIdx = modes.indexOf(currentMode);
             const nextMode = modes[(currentIdx + 1) % modes.length];
             
+            // Confirmation for LIVE mode
+            if (nextMode === 'LIVE') {
+                const confirmLive = confirm('⚠️ WARNING: LIVE mode will execute REAL trades with REAL money!\n\nAre you sure you want to switch to LIVE trading?');
+                if (!confirmLive) {
+                    showToast('LIVE mode switch cancelled', 'warning');
+                    return;
+                }
+            }
+            
             try {
                 const res = await fetch('/api/v3/mode', {
                     method: 'POST',
@@ -1065,11 +1188,25 @@
                     indicator.className = `mode-indicator ${mode}`;
                     document.getElementById('modeText').textContent = nextMode;
                     document.getElementById('controlMode').textContent = nextMode;
+                    
+                    // Update header color based on mode
+                    if (nextMode === 'PAPER') {
+                        document.documentElement.style.setProperty('--accent', '#3b82f6');
+                    } else if (nextMode === 'DEMO') {
+                        document.documentElement.style.setProperty('--accent', '#f59e0b');
+                    } else if (nextMode === 'LIVE') {
+                        document.documentElement.style.setProperty('--accent', '#ef4444');
+                    }
+                    
                     showToast(`Switched to ${nextMode} mode`, 'success');
+                    
+                    // Reload data
+                    loadPositions();
+                    loadKPIs();
                 } else {
                     showToast('Failed to switch mode', 'error');
                 }
-            } catch(e) { showToast('Mode switch failed', 'error'); }
+            } catch(e) { showToast('Mode switch failed: ' + e.message, 'error'); }
         }
         
         function startSSE() {

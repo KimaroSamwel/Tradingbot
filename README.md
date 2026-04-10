@@ -1,258 +1,403 @@
-# APEX FX Trading Bot
+# APEX FX Trading Bot - Complete System
 
-**Production-Ready Multi-Instrument Algorithmic Trading System**  
-*Following PRD Specification Volume I & Volume II*
-
----
-
-## Overview
-
-APEX FX Trading Bot is a fully automated, institutional-grade algorithmic trading system designed to trade six major instruments:
-
-- **EUR/USD** - Euro vs US Dollar
-- **GBP/USD** - British Pound vs US Dollar
-- **USD/JPY** - US Dollar vs Japanese Yen
-- **USD/CHF** - US Dollar vs Swiss Franc
-- **USD/CAD** - US Dollar vs Canadian Dollar
-- **XAU/USD** - Gold vs US Dollar
-
-### Core Objectives
-1. **Consistent profitability** through regime-aware strategy selection
-2. **Capital preservation** as the primary mandate
-3. **Adaptive risk management** with per-instrument profiles
-4. **Full automation** - zero manual intervention required
-5. **Institutional-grade execution** with spread filtering and retry logic
+**Version:** 3.0.0 (PRD Volume III Compliant)  
+**Status:** PRODUCTION READY
 
 ---
 
-## Quick Start
+## Table of Contents
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the bot
-python main.py
-
-# Open dashboard
-http://localhost:5000
-```
+1. [System Overview](#system-overview)
+2. [Features](#features)
+3. [Installation](#installation)
+4. [Running the System](#running-the-system)
+5. [Using the Dashboard](#using-the-dashboard)
+6. [Trading Modes](#trading-modes)
+7. [Historical Backtesting](#historical-backtesting)
+8. [API Endpoints](#api-endpoints)
+9. [Configuration](#configuration)
+10. [Testing](#testing)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
-## Architecture
+## System Overview
 
-```
-TradingBot/
-├── main.py                          # Entry point
-├── config/                         # Configuration files
-│   ├── config.yaml
-│   ├── mt5_config.yaml
-│   ├── risk_config.json
-│   └── strategies_config.yaml
-├── src/
-│   ├── api/main.py                  # Flask API (all endpoints)
-│   ├── config/__init__.py           # Config loader
-│   ├── data/
-│   │   ├── database.py              # SQLite (12 tables)
-│   │   ├── mt5_connector.py         # MT5 integration
-│   │   ├── commodity_feed.py        # WTI oil feed
-│   │   ├── calendar_feed.py         # Economic calendar
-│   │   ├── cot_parser.py            # CFTC COT parser (NEW)
-│   │   └── swap_filter.py           # Rollover protection (NEW)
-│   ├── strategies/engine.py         # 6 strategies + RDE
-│   ├── risk/
-│   │   ├── manager.py               # Risk management
-│   │   ├── correlation.py           # Correlation controls
-│   │   ├── portfolio_heat_monitor.py # Heat monitoring (NEW)
-│   │   ├── volatility_scaler.py     # VRS scalar (NEW)
-│   │   ├── signal_scorer.py          # Signal scoring (NEW)
-│   │   ├── kelly_sizer.py           # Kelly sizing (NEW)
-│   │   ├── fill_analyzer.py         # Execution quality (NEW)
-│   │   └── regime_drift_detector.py  # RDD (NEW)
-│   ├── execution/
-│   │   ├── order_router.py          # MT5 execution
-│   │   ├── time_exit_manager.py     # Time exits (NEW)
-│   │   └── calendar_filter.py       # Day-of-week (NEW)
-│   ├── analysis/
-│   │   ├── technical.py             # 30+ indicators
-│   │   └── performance_analyzer.py  # Self-learning (NEW)
-│   └── monitoring/
-│       ├── telegram_alerts.py       # 4-tier alerts
-│       ├── logger.py                # Structured logs
-│       └── health_monitor.py        # Heartbeat
-├── templates/index.html             # Web dashboard
-├── tests/                           # 133 pytest tests
-└── SYSTEM_HIGHLIGHTS.md             # Detailed documentation
-```
+APEX FX Trading Bot is a fully automated algorithmic trading system that trades Forex and Gold (XAUUSD) using advanced technical analysis and risk management. The system supports three operational modes:
+
+- **PAPER** - Virtual trading with historical backtesting
+- **DEMO** - Real trades on MT5 demo account
+- **LIVE** - Real money trading
+
+### Supported Instruments
+
+| Instrument | Type | Strategy |
+|------------|------|----------|
+| EURUSD | Forex | EMA Crossover + Trend |
+| GBPUSD | Forex | Momentum + Fibonacci |
+| USDJPY | Forex | Carry Trade + BoJ Filter |
+| XAUUSD | Gold | Multi-Timeframe Breakout |
 
 ---
 
 ## Features
 
-### Per-Instrument Strategies
-| Instrument | Primary Strategy | Key Indicators |
-|-------------|------------------|-----------------|
-| EUR/USD | Multi-Timeframe Trend | EMA(20,50,200), RSI, MACD |
-| GBP/USD | Momentum Breakout | EMA(50), RSI, ATR, Bollinger |
-| USD/JPY | Carry Momentum + BoJ Filter | EMA(200), Stochastic |
-| USD/CHF | Mean Reversion | Bollinger Bands, RSI, Williams %R |
-| USD/CAD | Oil-Correlated Trend | EMA(50,200), MACD, WTI Oil |
-| XAU/USD | Multi-Timeframe Trend | EMA(200,50), RSI, ATR, MACD |
+### Core Trading Features
+- 15-step pre-trade validation pipeline
+- 6 instrument-specific trading strategies
+- Regime detection (Trending/Ranging/Breakout)
+- Kelly position sizing
+- Volatility Risk Scalar (VRS)
+- Portfolio Heat Monitor
+- Trailing stops
+- Time-based exits
 
-### Risk Management (PRD Volume I + II)
-- **Position Sizing**: ATR-based with per-instrument profiles
-- **Kelly Criterion**: Fractional Kelly with activation thresholds
-- **Portfolio Heat Monitor**: Real-time aggregate risk tracking
-- **Volatility Scaler (VRS)**: Dynamic position sizing based on market vol
-- **Signal Scorer**: 0-100 weighted scoring replacing binary gates
-- **Circuit Breakers**: Daily (8%) and monthly (15%) drawdown limits
-- **Correlation Controls**: EUR/CHF inverse, GBP/EUR combined risk
+### Risk Management
+- Signal Scorer (grades: HIGH/STD/MARGINAL/REJECT)
+- Regime Drift Detector
+- Fill Analyzer
+- Calendar/Swap filters
+- Correlation controls
+- Max drawdown limits
 
-### Volume II Enhancements (11 New Modules)
-1. **Portfolio Heat Monitor** - Real-time aggregate open risk
-2. **Volatility Scaler (VRS)** - Portfolio-level volatility scalar (0.40-1.00)
-3. **Signal Scorer** - 5-factor weighted scoring (0-100 scale)
-4. **Kelly Sizer** - Fractional Kelly with cold streak ladder
-5. **Fill Analyzer** - Broker Quality Score (BQS) tracking
-6. **Regime Drift Detector** - Weekly strategy health check
-7. **Performance Analyzer** - Self-learning feedback loop
-8. **COT Parser** - CFTC COT report integration
-9. **Time Exit Manager** - Max hold times, forward progress, weekend policy
-10. **Calendar Filter** - Day-of-week, month-end, quarter-end rules
-11. **Swap Filter** - Rollover cost protection
+### UI Features
+- Real-time dashboard with 7 zones
+- Live candlestick charts (multiple timeframes)
+- Watchlist with live prices
+- Signal queue
+- Position management
+- Event logging
+- Mode switching
+
+---
+
+## Installation
+
+### Prerequisites
+
+1. **Python 3.11+** - [Download Python](https://www.python.org/downloads/)
+2. **MetaTrader 5** - For DEMO/LIVE trading (optional for PAPER mode)
+3. **Windows 10/11** (developed for Windows)
+
+### Step 1: Install Dependencies
+
+```bash
+# Navigate to the project folder
+cd TradingBot
+
+# Install required packages
+pip install flask flask-cors flask-sse metatrader5 pandas numpy pyyaml
+```
+
+Or install all at once:
+```bash
+pip install flask flask-cors flask-sse metatrader5 pandas numpy pyyaml pillow requests
+```
+
+### Step 2: Configure MT5 (Optional - for DEMO/LIVE mode)
+
+Edit `config/mt5_config.yaml`:
+```yaml
+mt5:
+  account:
+    demo: true  # Set to false for LIVE trading
+    server: "Your-Broker-Server"
+    login: 12345678
+    password: "your_password"
+```
+
+### Step 3: Run the System
+
+```bash
+python -m src.api.main
+```
+
+### Step 4: Open Dashboard
+
+Open your browser and go to:
+```
+http://localhost:5000
+```
+
+---
+
+## Using the Dashboard
+
+### Header Zone
+- **Mode Indicator**: Shows current mode (PAPER/DEMO/LIVE)
+- **MT5 Status**: Connection status
+- **Equity/Balance**: Account values
+- **VRS**: Volatility Risk Scalar
+- **Heat**: Portfolio heat gauge
+
+### KPI Strip
+- Today's P&L
+- Open Positions count
+- Win Rate
+- Profit Factor
+- Portfolio Heat %
+- BQS (Broker Quality Score)
+- RDD Status
+
+### Control Panel
+- **Switch Mode Button**: Toggle between PAPER/DEMO/LIVE
+- **Start/Stop Scanning**: Auto-scan toggle
+- **Run Manual Scan**: Execute scan immediately
+- **Emergency Stop**: Close all positions
+
+### Historical Backtest Panel
+1. Select start date
+2. Select end date  
+3. Choose currency pairs to test
+4. Click "Run Historical Backtest"
+5. View results on chart and in positions panel
+
+---
+
+## Trading Modes
+
+### PAPER Mode (Default)
+- **Purpose**: Training, testing, backtesting
+- **Behavior**: 
+  - Virtual trades with simulated execution
+  - Full P&L tracking
+  - Uses historical data for backtesting
+  - Commission/spread simulated
+- **How to use**:
+  1. Click "Switch" to select PAPER mode
+  2. Use the Backtest panel to select date range
+  3. Click "Run Historical Backtest"
+  4. Watch trades execute on the chart
+
+### DEMO Mode
+- **Purpose**: Testing with real broker conditions
+- **Behavior**:
+  - Real trades on MT5 demo account
+  - No real money risk
+  - Tests execution quality
+- **How to use**:
+  1. Ensure MT5 demo account is configured
+  2. Click "Switch" to select DEMO mode
+  3. Click "Run Manual Scan"
+  4. Real trades will execute on demo account
+
+### LIVE Mode
+- **Purpose**: Real money trading
+- **Behavior**:
+  - Real trades on MT5 live account
+  - Full risk management active
+  - WARNING: Real money at risk!
+- **How to use**:
+  1. Configure MT5 live credentials
+  2. Click "Switch" - confirmation dialog appears
+  3. Confirm to enable LIVE mode
+  4. Trades execute with real money
+
+---
+
+## Historical Backtesting
+
+The backtesting feature allows you to test the system using historical data:
+
+### How to Run a Backtest
+
+1. **Select Mode**: Ensure you're in PAPER mode
+2. **Set Date Range**: 
+   - Start Date: e.g., 2026-01-01
+   - End Date: e.g., 2026-04-10
+3. **Select Pairs**: Check the pairs you want to test
+4. **Run**: Click "Run Historical Backtest"
+
+### Backtest Results
+
+The system will show:
+- Total trades executed
+- Total P&L
+- Win Rate
+- Trade markers on the chart
+
+### Understanding Backtest
+
+The backtest uses:
+- **Entry Signal**: EMA 9/21 crossover
+- **Stop Loss**: 50 pips
+- **Take Profit**: 100 pips (1:2 risk-reward)
+- **Execution**: Simulates entry at close price with spread
 
 ---
 
 ## API Endpoints
 
-### Account
-- `GET /api/account` - Account info
-- `POST /api/account/connect` - Connect MT5
-- `POST /api/account/disconnect` - Disconnect MT5
+### Core Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Dashboard |
+| `/api/account` | GET | Account info |
+| `/api/positions` | GET | Open positions |
+| `/api/signals` | GET | Active signals |
+| `/api/market/ohlc` | GET | OHLC data |
 
-### Positions
-- `GET /api/positions` - Open positions
-- `POST /api/positions/open` - Open position
-- `POST /api/positions/close/<ticket>` - Close position
-- `POST /api/positions/close-all` - Close all
+### Mode Control
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v3/mode` | GET | Get current mode |
+| `/api/v3/mode` | POST | Switch mode |
 
-### Signals
-- `GET /api/signals` - Recent signals
-- `POST /api/signals/scan` - Scan for signals
+### Trading
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/system/scan-v2` | POST | Run manual scan |
+| `/api/backtest` | POST | Run backtest |
 
-### Watchlist
-- `GET /api/watchlist` - Get watchlist
-- `POST /api/watchlist` - Update watchlist
-
-### Market Data
-- `GET /api/market/ohlc` - OHLC data
-- `GET /api/market/indicators` - Technical indicators
-- `GET /api/market/symbols` - Available symbols
-
-### Risk
-- `GET /api/risk/status` - Risk status
-- `POST /api/risk/validate` - Validate trade
-
-### Stats
-- `GET /api/stats` - Trading statistics
-
-### API v2 Endpoints (NEW)
-- `GET /api/v2/heat` - Portfolio heat %
-- `GET /api/v2/vrs` - VRS scalar
-- `GET /api/v2/bqs` - Broker Quality Score
-- `GET /api/v2/kelly` - Kelly risk %
-- `GET /api/v2/rdd` - RDD status
-- `GET /api/v2/cot` - COT Index
-- `GET /api/v2/signal-scores` - Signal scores
-- `GET /api/v2/weekly-report` - Weekly report
-- `POST /api/v2/rdd/reset/<symbol>` - Reset suspended symbol
+### Statistics
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/stats` | GET | Trading stats |
+| `/api/v2/heat` | GET | Heat monitor |
+| `/api/v2/vrs` | GET | VRS scalar |
+| `/api/v2/bqs` | GET | Broker quality |
+| `/api/v2/rdd` | GET | Regime drift |
 
 ---
 
 ## Configuration
 
-Edit `config/config.yaml`:
+### Main Config (`config/config.yaml`)
 ```yaml
-system:
-  name: "APEX FX Trading Bot"
-  version: "2.0.0"
-  mode: "DEMO"
+trading:
+  mode: "PAPER"  # PAPER, DEMO, or LIVE
 
-symbols:
-  forex:
-    - XAUUSD
-    - EURUSD
-    - GBPUSD
-    - USDJPY
-    - USDCHF
-    - USDCAD
+risk:
+  max_heat_pct: 6
+  max_daily_loss: 5
+  max_position_size: 1.0
+```
+
+### MT5 Config (`config/mt5_config.yaml`)
+```yaml
+mt5:
+  account:
+    demo: true
+    server: "Deriv-Demo"
+    login: 6023219
+    password: ""
+```
+
+### Paper Config (`config/paper_config.yaml`)
+```yaml
+paper:
+  starting_balance: 10000
+  commission_per_lot: 7
+  slippage_pips: 0.3
 ```
 
 ---
 
 ## Testing
 
+### Test 1: API Server
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific module tests
-pytest tests/test_signal_scorer.py -v
-pytest tests/test_kelly_sizer.py -v
+python -m src.api.main
+# Should show: Running on http://localhost:5000
 ```
 
-**133 tests passing** ✓
+### Test 2: Dashboard
+- Open http://localhost:5000
+- Should see dashboard with live data
+
+### Test 3: Mode Switching
+- Click "Switch" button
+- Mode should change (PAPER → DEMO → LIVE)
+
+### Test 4: Backtest
+1. Select dates (e.g., 2026-01-01 to 2026-03-31)
+2. Select pairs (EURUSD, XAUUSD)
+3. Click "Run Historical Backtest"
+4. Check positions panel for trades
+
+### Test 5: DEMO Mode
+1. Switch to DEMO mode
+2. Click "Run Manual Scan"
+3. If signals found, real demo trades execute
+4. Check MT5 terminal for executed trades
 
 ---
 
-## Scheduled Jobs
+## Troubleshooting
 
-| Job | Schedule | Description |
-|-----|-----------|-------------|
-| RDD Check | Friday 21:00 UTC | Regime drift detection |
-| Performance Analysis | Friday 21:30 UTC | Self-learning loop |
-| COT Update | Friday 16:30 UTC | CFTC report refresh |
-| Daily Report | Daily 22:00 UTC | Performance summary |
+### Dashboard Shows "Connecting..."
+- Check if API server is running
+- Check browser console (F12) for errors
+- Verify MT5 connection
 
----
+### No Signals Generated
+- Check if market is open
+- EMA crossover requires specific conditions
+- Try different date ranges for backtest
 
-## Alert Tiering
+### Backtest Not Working
+- Ensure you're in PAPER mode
+- Check date format (YYYY-MM-DD)
+- Verify MT5 has historical data
 
-| Tier | Examples | Delivery |
-|------|----------|----------|
-| INFO | Trade opened/closed | Telegram (silent) |
-| WARNING | Spread high, VRS reduced | Telegram |
-| CRITICAL | Daily breaker, RDD RED | Telegram + Email |
-| EMERGENCY | 8% drawdown, VPS lost | Telegram + Email + SMS |
+### MT5 Connection Issues
+- Ensure MT5 terminal is installed
+- Check login credentials
+- Verify server name matches broker
 
----
-
-## Database Tables
-
-### Volume I (5 tables)
-- accounts, trades, signals, prices, settings
-
-### Volume II (7 new tables)
-- fill_quality, signal_scores, kelly_history, portfolio_heat_log, rdd_status, cot_data, weekly_reports
+### Trades Not Executing
+- Check mode (PAPER doesn't execute real trades)
+- Verify heat level not at CRITICAL
+- Check calendar filter (no trading during major holidays)
 
 ---
 
-## Disclaimer
+## File Structure
 
-**Trading involves substantial risk.** This bot is for educational and research purposes. Only trade with capital you can afford to lose. Always:
-- Test thoroughly on demo accounts
-- Review all settings before live trading
-- Monitor initial trades closely
-- Understand the risk parameters
+```
+TradingBot/
+├── main.py                      # Legacy entry point
+├── src/
+│   ├── api/main.py             # Flask API server
+│   ├── config/__init__.py      # Configuration loader
+│   ├── data/
+│   │   ├── mt5_connector.py    # MT5 connection
+│   │   └── database.py        # SQLite database
+│   ├── strategies/engine.py   # Trading strategies
+│   ├── risk/                  # Risk management modules
+│   ├── execution/             # Order execution
+│   ├── paper/paper_engine.py  # Paper trading
+│   └── monitoring/            # Event logging
+├── config/
+│   ├── config.yaml             # Main config
+│   ├── mt5_config.yaml         # MT5 credentials
+│   └── paper_config.yaml      # Paper settings
+├── templates/
+│   └── index.html              # Dashboard UI
+├── tests/                      # Unit tests
+└── README.md                   # This file
+```
 
 ---
 
-## Version History
+## Important Notes
 
-- **v2.0.0** (2026-04-09) - PRD Volume II complete
-- **v1.0.0** (2026-04-08) - PRD Volume I complete
+1. **Always test in PAPER mode first** before using DEMO or LIVE
+2. **Backtesting is not guarantee of future results**
+3. **Start with small position sizes** in LIVE mode
+4. **Monitor the system** during live trading
+5. **Keep MT5 terminal running** for DEMO/LIVE modes
 
 ---
 
-*Version: 2.0.0 | Built: 2026-04-09*
+## Support
+
+For issues or questions:
+- Check the browser console (F12) for error messages
+- Review the API logs in the terminal
+- Check MT5 terminal for trade confirmations
+
+---
+
+**Version 3.0.0 - PRD Volume III Compliant**  
+**Last Updated:** April 10, 2026

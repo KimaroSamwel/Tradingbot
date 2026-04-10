@@ -532,8 +532,22 @@ def validate_trade():
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """Get trading statistics"""
-    stats = db.get_stats()
-    return jsonify(stats)
+    current_mode = config.get('trading.mode', 'PAPER')
+    
+    if current_mode == 'PAPER':
+        # Get paper trading stats
+        stats = paper_engine.get_stats(365)
+        return jsonify({
+            'total_trades': stats.get('total_trades', 0),
+            'total_pnl': stats.get('total_pnl', 0),
+            'win_rate': stats.get('win_rate', 0),
+            'avg_pnl': stats.get('avg_pnl', 0),
+            'daily_pnl': stats.get('daily_pnl', {}),
+            'mode': 'PAPER'
+        })
+    else:
+        stats = db.get_stats()
+        return jsonify(stats)
 
 
 @app.route('/api/stats/performance', methods=['GET'])
